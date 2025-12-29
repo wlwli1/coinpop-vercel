@@ -57,67 +57,56 @@ app.get('/naver/rss', async (req, res) => {
 
 
 
-
 //미디엄
+
 app.get('/medium/rss', async (req, res) => {
     const MEDIUM_ID = '@winnerss';
     const TARGET_RSS_URL = `https://medium.com/feed/${MEDIUM_ID}`;
-
+    
+    // ... (기본 설정 유지) ...
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const host = req.headers.host;
     const MY_DOMAIN = `${protocol}://${host}`;
     const WRAPPER = `${MY_DOMAIN}/go?url=`;
 
     try {
-        // [캐시 방지] 브라우저가 옛날 에러 화면 기억 못 하게 설정
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
 
         const response = await fetch(TARGET_RSS_URL, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
-            }
+            headers: { 'User-Agent': 'Mozilla/5.0 ...' }
         });
 
         if (!response.ok) throw new Error(`Medium Error: ${response.status}`);
 
         let xmlData = await response.text();
 
-        // =========================================================
-        // [핵심 해결] <rss 태그 앞부분을 무조건 다 잘라냄
-        // 1. <?xml ... ?> 선언부 제거 (Prolog 에러 원천 차단)
-        // 2. 앞에 붙은 숫자, 공백, BOM 등 쓰레기값 제거
-        // =========================================================
-        const rssStartIndex = xmlData.indexOf('<rss');
-        
-        if (rssStartIndex === -1) {
-             // rss 태그가 없으면 에러로 간주 (HTML 차단 메시지 등)
-             console.error('No <rss> tag found. Data:', xmlData.substring(0, 100));
-             res.set('Content-Type', 'text/plain');
-             return res.send('[Error] Medium Server did not return RSS XML.');
-        }
+        // [수정] 무조건 자르는 substring 제거!
+        // 대신 맨 앞의 공백(화이트스페이스)만 제거 (trim)
+        xmlData = xmlData.trim();
 
-        // <rss> 위치부터 시작하도록 자름
-        xmlData = xmlData.substring(rssStartIndex);
+        // 만약 가져온 데이터에 <?xml ... ?> 선언이 아예 없다면 강제로 붙여주는 것이 안전함
+        if (!xmlData.startsWith('<?xml')) {
+            xmlData = '<?xml version="1.0" encoding="UTF-8"?>\n' + xmlData;
+        }
 
         // 1. WRAPPER 중복 제거
         while (xmlData.includes(WRAPPER)) {
             xmlData = xmlData.replaceAll(WRAPPER, '');
         }
 
-        // 2. <link> 태그 주소 변환
+        // 2. <link> 태그 주소 변환 (기존 로직 유지)
         xmlData = xmlData.replace(
             /(<link>)(.*?)(<\/link>)/g, 
             (match, p1, p2, p3) => {
                 if (p2.includes('medium.com') && !p2.includes(MY_DOMAIN)) {
+                    // CDATA가 있을 수 있으므로 단순 텍스트일 때만 처리하거나 주의 필요
+                    // 여기서는 기존 로직 유지
                     return `${p1}${WRAPPER}${p2}${p3}`;
                 }
                 return match;
             }
         );
-
-        // 3. <atom:link> 태그 주소 변환
+        // <atom:link> 처리 등 기존 로직 유지...
         xmlData = xmlData.replace(
             /(<atom:link href=")(.*?)(")/g,
             (match, p1, p2, p3) => {
@@ -128,13 +117,11 @@ app.get('/medium/rss', async (req, res) => {
             }
         );
 
-        // [최종 설정] 이제 다시 XML로 선언
         res.setHeader('Content-Type', 'application/xml; charset=utf-8');
         res.status(200).send(xmlData);
 
     } catch (error) {
         console.error(error);
-        res.setHeader('Content-Type', 'text/plain');
         res.status(500).send(`Server Error: ${error.message}`);
     }
 });
@@ -156,73 +143,39 @@ app.get('/medium/rss', async (req, res) => {
 // [유튜브 RSS] 유튜브는 <feed> 태그를 사용하는 Atom 방식입니다.
 // =========================================================
 app.get('/youtube/rss', async (req, res) => {
-    // 👇 아까 찾은 채널 ID를 여기에 넣으세요!
-    const CHANNEL_ID = 'UCap7iEkd2bYDiR3eQ67rl3g'; // (예: UC-lHJZR3Gqxm24_Vd_AJ5Yw)
-    
+    const CHANNEL_ID = 'UCap7iEkd2bYDiR3eQ67rl3g'; 
     const TARGET_RSS_URL = `https://www.youtube.com/feeds/videos.xml?channel_id=${CHANNEL_ID}`;
-
+    
+    // ... (기본 설정 유지) ...
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const host = req.headers.host;
     const MY_DOMAIN = `${protocol}://${host}`;
     const WRAPPER = `${MY_DOMAIN}/go?url=`;
 
     try {
-        // [캐시 방지]
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
-
-        const response = await fetch(TARGET_RSS_URL, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
-            }
-        });
-
+        
+        const response = await fetch(TARGET_RSS_URL);
         if (!response.ok) throw new Error(`YouTube Error: ${response.status}`);
 
         let xmlData = await response.text();
 
-        // =========================================================
-        // [핵심] Prolog 에러 방지 (유튜브는 <feed>로 시작합니다)
-        // =========================================================
-        const feedStartIndex = xmlData.indexOf('<feed');
-        
-        if (feedStartIndex === -1) {
-             console.error('No <feed> tag found.');
-             res.set('Content-Type', 'text/plain');
-             return res.send('[Error] YouTube가 XML을 주지 않았습니다.');
-        }
+        // [수정] 머리 자르는 코드 삭제 (substring 제거)
+        xmlData = xmlData.trim(); // 공백만 제거
 
-        // <feed> 앞부분 싹둑
-        xmlData = xmlData.substring(feedStartIndex);
+        // 유튜브는 기본적으로 <?xml ...?>을 잘 줍니다. 건드리지 마세요.
 
         // 1. 기존 WRAPPER 청소
         while (xmlData.includes(WRAPPER)) {
             xmlData = xmlData.replaceAll(WRAPPER, '');
         }
 
-        // 2. 링크 주소 포장
-        // 유튜브는 <link rel="alternate" href="..."> 형식을 씁니다.
+        // 2. 링크 주소 포장 (기존 로직 유지)
         xmlData = xmlData.replace(
             /(href=")(https:\/\/www\.youtube\.com\/watch\?v=)(.*?)(")/g, 
             (match, p1, p2, p3, p4) => {
-                // 이미 내 도메인이 있으면 패스
                 if (match.includes(MY_DOMAIN)) return match;
-                
-                // p2+p3가 전체 주소입니다.
-                const fullYoutubeLink = `${p2}${p3}`;
-                return `${p1}${WRAPPER}${fullYoutubeLink}${p4}`;
-            }
-        );
-
-        // [추가] 숏츠(Shorts) 같은 게 섞여 있을 경우를 대비해 일반 링크 태그도 처리
-        xmlData = xmlData.replace(
-            /(<link>)(.*?)(<\/link>)/g,
-            (match, p1, p2, p3) => {
-                if (p2.includes('youtube.com') && !p2.includes(MY_DOMAIN)) {
-                    return `${p1}${WRAPPER}${p2}${p3}`;
-                }
-                return match;
+                return `${p1}${WRAPPER}${p2}${p3}${p4}`;
             }
         );
 
@@ -230,9 +183,8 @@ app.get('/youtube/rss', async (req, res) => {
         res.status(200).send(xmlData);
 
     } catch (error) {
-        console.error(error);
-        res.set('Content-Type', 'text/plain');
-        res.status(500).send(`Server Error: ${error.message}`);
+        // ... 에러 처리
+        res.status(500).send(`Error`);
     }
 });
 
@@ -285,8 +237,7 @@ app.get('/substack/rss', async (req, res) => {
              return res.send('[Error] Substack이 RSS XML을 주지 않았습니다.');
         }
 
-        // <rss> 태그 시작점부터 데이터 사용
-        xmlData = xmlData.substring(rssStartIndex);
+  xmlData = xmlData.trim(); // 공백만 제거
 
         // 3. 기존 껍데기(WRAPPER) 중복 방지 청소
         while (xmlData.includes(WRAPPER)) {
