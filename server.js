@@ -55,58 +55,57 @@ app.get('/naver/rss', async (req, res) => {
 
 
 
+
+
+
 //미디엄
 app.get('/medium/rss', async (req, res) => {
     const MEDIUM_ID = '@winnerss';
     const TARGET_RSS_URL = `https://medium.com/feed/${MEDIUM_ID}`;
 
-    // 내 도메인 설정
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const host = req.headers.host;
     const MY_DOMAIN = `${protocol}://${host}`;
     const WRAPPER = `${MY_DOMAIN}/go?url=`;
 
     try {
+        // [중요] 브라우저가 이전의 '에러 난 페이지'를 기억하지 못하게 캐시 금지 설정
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+
         const response = await fetch(TARGET_RSS_URL, {
             headers: {
-                // 일반 브라우저인 척 위장
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
             }
         });
 
-        if (!response.ok) {
-            throw new Error(`Medium Server Error: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`Medium Error: ${response.status}`);
 
         let xmlData = await response.text();
 
         // =========================================================
-        // [핵심 수정] 무식하지만 확실한 방법
-        // 맨 앞에서부터 '<?xml' 이라는 글자가 어디있는지 찾습니다.
+        // [초강수 해결책] XML 선언부(<?xml...?>)를 아예 버립니다.
+        // 에러의 원인인 'prolog'를 삭제하고 <rss> 태그부터 시작하게 만듭니다.
         // =========================================================
-        const xmlStartIndex = xmlData.indexOf('<?xml');
-
-        // 1. 만약 '<?xml' 이라는 글자가 아예 없다면? -> 차단당했거나 HTML임
-        if (xmlStartIndex === -1) {
-            console.error('Not an XML format. Response starts with:', xmlData.substring(0, 50));
-            // 브라우저에서 원인을 눈으로 볼 수 있게 text/plain으로 에러 내용 출력
-            res.set('Content-Type', 'text/plain; charset=utf-8');
-            return res.send(`[Error] Medium이 XML을 주지 않았습니다.\n\n받은 데이터 앞부분:\n${xmlData.substring(0, 500)}`);
-        }
-
-        // 2. '<?xml' 앞부분에 있는 모든 찌꺼기(공백, BOM, 쓰레기값) 잘라내기
-        if (xmlStartIndex > 0) {
-            xmlData = xmlData.substring(xmlStartIndex);
-        }
-
-        // 3. 기존 로직 수행 (링크 변환)
+        const rssStartIndex = xmlData.indexOf('<rss');
         
-        // WRAPPER 청소
+        if (rssStartIndex === -1) {
+             // rss 태그조차 없다면 이건 100% 차단 메시지(HTML)입니다.
+             console.error('No <rss> tag found. Data:', xmlData.substring(0, 100));
+             res.set('Content-Type', 'text/plain');
+             return res.send('[Error] Medium에서 RSS가 아닌 다른 데이터를 보냈습니다 (HTML 등).');
+        }
+
+        // <rss> 태그 앞의 모든 것(공백, <?xml...?> 등)을 다 잘라냅니다.
+        xmlData = xmlData.substring(rssStartIndex);
+
+        // 1. 기존 껍데기 청소
         while (xmlData.includes(WRAPPER)) {
             xmlData = xmlData.replaceAll(WRAPPER, '');
         }
 
-        // <link> 변환
+        // 2. 주소 포장 (<link> 태그)
         xmlData = xmlData.replace(
             /(<link>)(.*?)(<\/link>)/g, 
             (match, p1, p2, p3) => {
@@ -117,7 +116,7 @@ app.get('/medium/rss', async (req, res) => {
             }
         );
 
-        // <atom:link> 변환
+        // 3. Atom Link 태그 처리
         xmlData = xmlData.replace(
             /(<atom:link href=")(.*?)(")/g,
             (match, p1, p2, p3) => {
@@ -128,15 +127,14 @@ app.get('/medium/rss', async (req, res) => {
             }
         );
 
-        // [중요] Content-Type 설정
+        // Content-Type 설정 후 전송
         res.set('Content-Type', 'application/xml; charset=utf-8');
         res.status(200).send(xmlData);
 
     } catch (error) {
-        console.error('RSS Process Error:', error);
-        // 에러 상황을 보기 위해 text/plain으로 출력
-        res.set('Content-Type', 'text/plain; charset=utf-8');
-        res.status(500).send(`Server Error 발생:\n${error.message}`);
+        console.error(error);
+        res.set('Content-Type', 'text/plain');
+        res.status(500).send(`Server Error: ${error.message}`);
     }
 });
 
