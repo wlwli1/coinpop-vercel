@@ -276,6 +276,86 @@ if (!xmlData.startsWith('<?xml')) {
 
 
 
+// =========================================================
+// [네이버 카페 RSS]
+// 조건: "전체 공개" 게시판만 가능 (멤버 공개 X)
+// =========================================================
+app.get('/cafe/rss', async (req, res) => {
+    // 1. 여기서 타겟 설정
+    const CLUB_ID = '31611573'; // 님 카페(grayalca6)의 숫자 ID
+    const MENU_ID = '1';        // 예: 1번 게시판 (원하는 게시판 ID로 교체 필요!)
+    
+    // 네이버 카페 RSS 표준 주소
+    const TARGET_RSS_URL = `https://rss.cafe.naver.com/rss.nhn?clubid=${CLUB_ID}&menuid=${MENU_ID}`;
+
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers.host;
+    const MY_DOMAIN = `${protocol}://${host}`;
+    const WRAPPER = `${MY_DOMAIN}/go?url=`;
+
+    try {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+
+        const response = await fetch(TARGET_RSS_URL, {
+            headers: {
+                // 네이버가 봇을 막을 수 있으므로 일반 브라우저인 척
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
+            }
+        });
+
+        if (!response.ok) throw new Error(`Naver Cafe Error: ${response.status}`);
+
+        // 텍스트로 변환 (만약 한글이 깨지면 iconv-lite 필요, 일단은 그냥 진행)
+        let xmlData = await response.text();
+
+        // 1. 공백 제거 (안전장치)
+        xmlData = xmlData.trim();
+
+        // 2. XML 선언부 확인 (없으면 추가)
+        if (!xmlData.startsWith('<?xml')) {
+            xmlData = '<?xml version="1.0" encoding="UTF-8"?>\n' + xmlData;
+        }
+
+        // 3. WRAPPER 중복 제거
+        while (xmlData.includes(WRAPPER)) {
+            xmlData = xmlData.replaceAll(WRAPPER, '');
+        }
+
+        // 4. 링크 변환 (카페 글 주소 포장)
+        // 카페 글은 보통 cafe.naver.com/카페이름/글번호 or ArticleRead.nhn 형태
+        xmlData = xmlData.replace(
+            /(<link>)(.*?)(<\/link>)/g, 
+            (match, p1, p2, p3) => {
+                if (p2.includes('cafe.naver.com') && !p2.includes(MY_DOMAIN)) {
+                    return `${p1}${WRAPPER}${p2}${p3}`;
+                }
+                return match;
+            }
+        );
+
+        res.set('Content-Type', 'application/xml; charset=utf-8');
+        res.status(200).send(xmlData);
+
+    } catch (error) {
+        console.error(error);
+        res.set('Content-Type', 'text/plain');
+        res.status(500).send(`Cafe Error: ${error.message}`);
+    }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
