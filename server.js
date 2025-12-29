@@ -95,44 +95,76 @@ app.get('/medium/rss', async (req, res) => {
 
 
 
-
 // =========================================================
-// [기능 5] X(트위터) RSS 변환기 (/x/rss)
+// [기능 5] X(트위터) RSS 변환기 (자동 우회 시스템 적용)
 // =========================================================
 app.get('/x/rss', async (req, res) => {
     const TWITTER_ID = 'youwo296196';
-    
-    // [수정함] 살아있는 다른 서버 목록 (하나씩 주석 풀어서 테스트 해보세요)
-    // 1번 후보 (추천):
-    const BRIDGE_URL = 'https://nitter.poast.org'; 
-    // 2번 후보: 'https://nitter.lucabased.xyz';
-    // 3번 후보: 'https://nitter.soopy.moe';
 
-    const TARGET_RSS_URL = `${BRIDGE_URL}/${TWITTER_ID}/rss`;
+    // [핵심] 살아있는 Nitter 서버 후보군 (순서대로 시도함)
+    const BRIDGES = [
+        'https://nitter.poast.org',
+        'https://nitter.privacydev.net',
+        'https://nitter.lucabased.xyz',
+        'https://nitter.soopy.moe',
+        'https://nitter.uni-sonia.com'
+    ];
 
-    // Vercel 주소
+    // Vercel 주소 감지
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const host = req.headers.host;
     const MY_DOMAIN = `${protocol}://${host}`;
     const WRAPPER = `${MY_DOMAIN}/go?url=`;
 
+    let xmlData = null;
+    let usedBridge = '';
+
+    // [반복문] 살아있는 서버 찾기 (1번부터 차례대로 노크)
+    for (const bridge of BRIDGES) {
+        try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 4000); // 4초 타임아웃
+
+            console.log(`Trying Bridge: ${bridge}...`);
+            const response = await fetch(`${bridge}/${TWITTER_ID}/rss`, { signal: controller.signal });
+            clearTimeout(timeout);
+
+            if (response.ok) {
+                xmlData = await response.text();
+                // RSS 데이터가 너무 짧거나(차단됨), 에러 메시지면 패스
+                if (!xmlData.includes('<rss') || xmlData.includes('Error')) {
+                    throw new Error('Blocked content');
+                }
+                usedBridge = bridge;
+                console.log(`Success with: ${bridge}`);
+                break; // 성공했으니 반복문 탈출!
+            }
+        } catch (e) {
+            console.log(`Failed: ${bridge}`);
+            continue; // 실패하면 다음 후보로 넘어감
+        }
+    }
+
+    // 모든 후보가 다 실패했을 경우
+    if (!xmlData) {
+        res.set('Content-Type', 'application/xml');
+        return res.send(`
+            <rss version="2.0">
+                <channel>
+                    <title>All Bridges Blocked</title>
+                    <description>Twitter is blocking all Nitter instances currently.</description>
+                </channel>
+            </rss>
+        `);
+    }
+
+    // ================= [데이터 세탁] =================
     try {
-        // 타임아웃 설정 (3초 안에 안 되면 에러 처리)
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3000);
-
-        const response = await fetch(TARGET_RSS_URL, { signal: controller.signal });
-        clearTimeout(timeout);
-
-        if (!response.ok) throw new Error('Twitter Bridge Blocked');
-
-        let xmlData = await response.text();
-
-        // 1. 우회 주소(nitter...)를 -> x.com으로 세탁
-        const bridgeRegex = new RegExp(BRIDGE_URL, 'g'); 
+        // 1. 성공한 Nitter 주소를 -> x.com으로 변경
+        const bridgeRegex = new RegExp(usedBridge, 'g'); 
         xmlData = xmlData.replace(bridgeRegex, 'https://x.com');
         
-        // 2. twitter.com -> x.com 통일
+        // 2. 혹시 모를 twitter.com -> x.com 통일
         xmlData = xmlData.replaceAll('https://twitter.com', 'https://x.com');
 
         // 3. 중복 껍데기 청소
@@ -151,10 +183,8 @@ app.get('/x/rss', async (req, res) => {
         res.send(xmlData);
 
     } catch (error) {
-        console.error("X RSS Error:", error.message);
-        // 실패 시 에러 메시지 대신 빈 XML을 보내서 서버 다운 방지
-        res.set('Content-Type', 'application/xml');
-        res.send('<rss version="2.0"><channel><title>X RSS Error</title><description>Bridge Blocked</description></channel></rss>');
+        console.error("X Processing Error:", error);
+        res.status(500).send('Processing Error');
     }
 });
 
