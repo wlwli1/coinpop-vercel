@@ -69,7 +69,7 @@ app.get('/medium/rss', async (req, res) => {
     const WRAPPER = `${MY_DOMAIN}/go?url=`;
 
     try {
-        // [중요] 브라우저가 이전의 '에러 난 페이지'를 기억하지 못하게 캐시 금지 설정
+        // [강력 캐시 무시] 제발 저장하지 마라
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
@@ -80,32 +80,19 @@ app.get('/medium/rss', async (req, res) => {
             }
         });
 
-        if (!response.ok) throw new Error(`Medium Error: ${response.status}`);
-
         let xmlData = await response.text();
 
-        // =========================================================
-        // [초강수 해결책] XML 선언부(<?xml...?>)를 아예 버립니다.
-        // 에러의 원인인 'prolog'를 삭제하고 <rss> 태그부터 시작하게 만듭니다.
-        // =========================================================
+        // [XML 선언부 제거 로직]
         const rssStartIndex = xmlData.indexOf('<rss');
-        
-        if (rssStartIndex === -1) {
-             // rss 태그조차 없다면 이건 100% 차단 메시지(HTML)입니다.
-             console.error('No <rss> tag found. Data:', xmlData.substring(0, 100));
-             res.set('Content-Type', 'text/plain');
-             return res.send('[Error] Medium에서 RSS가 아닌 다른 데이터를 보냈습니다 (HTML 등).');
+        if (rssStartIndex !== -1) {
+            xmlData = xmlData.substring(rssStartIndex);
         }
 
-        // <rss> 태그 앞의 모든 것(공백, <?xml...?> 등)을 다 잘라냅니다.
-        xmlData = xmlData.substring(rssStartIndex);
-
-        // 1. 기존 껍데기 청소
+        // 기존 치환 로직들...
         while (xmlData.includes(WRAPPER)) {
             xmlData = xmlData.replaceAll(WRAPPER, '');
         }
 
-        // 2. 주소 포장 (<link> 태그)
         xmlData = xmlData.replace(
             /(<link>)(.*?)(<\/link>)/g, 
             (match, p1, p2, p3) => {
@@ -116,7 +103,6 @@ app.get('/medium/rss', async (req, res) => {
             }
         );
 
-        // 3. Atom Link 태그 처리
         xmlData = xmlData.replace(
             /(<atom:link href=")(.*?)(")/g,
             (match, p1, p2, p3) => {
@@ -127,14 +113,18 @@ app.get('/medium/rss', async (req, res) => {
             }
         );
 
-        // Content-Type 설정 후 전송
-        res.set('Content-Type', 'application/xml; charset=utf-8');
-        res.status(200).send(xmlData);
+        // ========================================================
+        // [중요] 범인 색출을 위해 Content-Type을 'text/plain'으로 변경
+        // 이렇게 하면 브라우저가 에러 화면 대신 '실제 데이터'를 보여줍니다.
+        // ========================================================
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        
+        // 데이터의 맨 앞뒤 공백을 한 번 더 제거하고 보냄
+        res.send(xmlData.trim());
 
     } catch (error) {
-        console.error(error);
-        res.set('Content-Type', 'text/plain');
-        res.status(500).send(`Server Error: ${error.message}`);
+        res.setHeader('Content-Type', 'text/plain');
+        res.status(500).send(`Error: ${error.message}`);
     }
 });
 
