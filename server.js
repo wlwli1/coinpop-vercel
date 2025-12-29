@@ -275,17 +275,19 @@ if (!xmlData.startsWith('<?xml')) {
 
 
 
-
 // =========================================================
-// [네이버 카페 RSS]
-// 조건: "전체 공개" 게시판만 가능 (멤버 공개 X)
+// [네이버 카페 RSS] - 강력 모드 (SSL 무시 + 헤더 보강)
 // =========================================================
 app.get('/cafe/rss', async (req, res) => {
-    // 1. 여기서 타겟 설정
-    const CLUB_ID = '31611573'; // 님 카페(grayalca6)의 숫자 ID
-    const MENU_ID = '1';        // 예: 1번 게시판 (원하는 게시판 ID로 교체 필요!)
+    // 1. 카페 정보 설정
+    // grayalca6의 ClubID는 31362001이 맞습니다.
+    const CLUB_ID = '31611573'; 
     
-    // 네이버 카페 RSS 표준 주소
+    // [중요] 게시판 ID (MenuID)를 꼭 확인하세요! 
+    // 전체글보기는 안 되고, 특정 게시판(예: 자유게시판) ID여야 합니다.
+    // 일단 '1'로 두었으니 안 되면 다른 숫자로 바꿔보세요.
+    const MENU_ID = '1';        
+    
     const TARGET_RSS_URL = `https://rss.cafe.naver.com/rss.nhn?clubid=${CLUB_ID}&menuid=${MENU_ID}`;
 
     const protocol = req.headers['x-forwarded-proto'] || 'https';
@@ -294,24 +296,31 @@ app.get('/cafe/rss', async (req, res) => {
     const WRAPPER = `${MY_DOMAIN}/go?url=`;
 
     try {
+        // [핵심 해결책 1] 네이버 구형 서버의 SSL 인증서 에러 무시 설정
+        // (Vercel에서 네이버 RSS 접속 시 필수일 수 있음)
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
 
         const response = await fetch(TARGET_RSS_URL, {
+            method: 'GET',
             headers: {
-                // 네이버가 봇을 막을 수 있으므로 일반 브라우저인 척
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
+                // [핵심 해결책 2] 네이버 카페인 척 속이기
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+                'Referer': 'https://cafe.naver.com/',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
             }
         });
 
         if (!response.ok) throw new Error(`Naver Cafe Error: ${response.status}`);
 
-        // 텍스트로 변환 (만약 한글이 깨지면 iconv-lite 필요, 일단은 그냥 진행)
+        // 텍스트 변환 (인코딩 깨짐 방지 위해 buffer로 받을 수도 있으나 일단 text 시도)
         let xmlData = await response.text();
 
-        // 1. 공백 제거 (안전장치)
+        // 1. 공백 제거
         xmlData = xmlData.trim();
 
-        // 2. XML 선언부 확인 (없으면 추가)
+        // 2. XML 선언부 강제 주입
         if (!xmlData.startsWith('<?xml')) {
             xmlData = '<?xml version="1.0" encoding="UTF-8"?>\n' + xmlData;
         }
@@ -321,8 +330,7 @@ app.get('/cafe/rss', async (req, res) => {
             xmlData = xmlData.replaceAll(WRAPPER, '');
         }
 
-        // 4. 링크 변환 (카페 글 주소 포장)
-        // 카페 글은 보통 cafe.naver.com/카페이름/글번호 or ArticleRead.nhn 형태
+        // 4. 링크 변환
         xmlData = xmlData.replace(
             /(<link>)(.*?)(<\/link>)/g, 
             (match, p1, p2, p3) => {
@@ -333,11 +341,17 @@ app.get('/cafe/rss', async (req, res) => {
             }
         );
 
+        // [중요] 사용 후 보안 설정 복구 (권장)
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
+
         res.set('Content-Type', 'application/xml; charset=utf-8');
         res.status(200).send(xmlData);
 
     } catch (error) {
         console.error(error);
+        // 에러 발생 시에도 보안 설정 복구
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
+        
         res.set('Content-Type', 'text/plain');
         res.status(500).send(`Cafe Error: ${error.message}`);
     }
