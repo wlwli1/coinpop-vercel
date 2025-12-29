@@ -239,6 +239,102 @@ app.get('/youtube/rss', async (req, res) => {
 
 
 
+
+
+
+
+// =========================================================
+// [서브스택 RSS] Prolog 에러 방지 & 링크 변환 적용 완료
+// =========================================================
+app.get('/substack/rss', async (req, res) => {
+    // 님 서브스택 아이디 (주소 맨 뒤 @coinpop 부분에서 @ 뺀 것)
+    const SUBSTACK_USER = 'coinpop'; 
+    const TARGET_RSS_URL = `https://${SUBSTACK_USER}.substack.com/feed`;
+
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers.host;
+    const MY_DOMAIN = `${protocol}://${host}`;
+    const WRAPPER = `${MY_DOMAIN}/go?url=`;
+
+    try {
+        // 1. 캐시 방지 (에러 화면 기억 삭제)
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+
+        // 2. RSS 데이터 가져오기
+        const response = await fetch(TARGET_RSS_URL, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+            }
+        });
+
+        if (!response.ok) throw new Error(`Substack Error: ${response.status}`);
+
+        let xmlData = await response.text();
+
+        // =========================================================
+        // [핵심] XML 선언부(<?xml...?>) 및 앞부분 공백 제거
+        // 서브스택도 <rss> 태그를 사용하므로 <rss 찾아서 앞부분 다 자름
+        // =========================================================
+        const rssStartIndex = xmlData.indexOf('<rss');
+        
+        if (rssStartIndex === -1) {
+             console.error('No <rss> tag found in Substack response.');
+             res.set('Content-Type', 'text/plain');
+             return res.send('[Error] Substack이 RSS XML을 주지 않았습니다.');
+        }
+
+        // <rss> 태그 시작점부터 데이터 사용
+        xmlData = xmlData.substring(rssStartIndex);
+
+        // 3. 기존 껍데기(WRAPPER) 중복 방지 청소
+        while (xmlData.includes(WRAPPER)) {
+            xmlData = xmlData.replaceAll(WRAPPER, '');
+        }
+
+        // 4. <link> 태그 주소 포장 (내 사이트 거쳐가게 만들기)
+        xmlData = xmlData.replace(
+            /(<link>)(.*?)(<\/link>)/g, 
+            (match, p1, p2, p3) => {
+                // 서브스택 링크이면서, 내 도메인이 아직 안 붙은 것만 처리
+                if (p2.includes('substack.com') && !p2.includes(MY_DOMAIN)) {
+                    return `${p1}${WRAPPER}${p2}${p3}`;
+                }
+                return match;
+            }
+        );
+
+        // 5. 응답 전송
+        res.set('Content-Type', 'application/xml; charset=utf-8');
+        res.status(200).send(xmlData);
+
+    } catch (error) {
+        console.error(error);
+        res.set('Content-Type', 'text/plain');
+        res.status(500).send(`Substack Server Error: ${error.message}`);
+    }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // [중요] Vercel은 이 부분을 봅니다.
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
