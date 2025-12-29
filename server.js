@@ -69,7 +69,7 @@ app.get('/medium/rss', async (req, res) => {
     const WRAPPER = `${MY_DOMAIN}/go?url=`;
 
     try {
-        // [강력 캐시 무시] 제발 저장하지 마라
+        // [캐시 방지] 브라우저가 옛날 에러 화면 기억 못 하게 설정
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
@@ -80,19 +80,33 @@ app.get('/medium/rss', async (req, res) => {
             }
         });
 
+        if (!response.ok) throw new Error(`Medium Error: ${response.status}`);
+
         let xmlData = await response.text();
 
-        // [XML 선언부 제거 로직]
+        // =========================================================
+        // [핵심 해결] <rss 태그 앞부분을 무조건 다 잘라냄
+        // 1. <?xml ... ?> 선언부 제거 (Prolog 에러 원천 차단)
+        // 2. 앞에 붙은 숫자, 공백, BOM 등 쓰레기값 제거
+        // =========================================================
         const rssStartIndex = xmlData.indexOf('<rss');
-        if (rssStartIndex !== -1) {
-            xmlData = xmlData.substring(rssStartIndex);
+        
+        if (rssStartIndex === -1) {
+             // rss 태그가 없으면 에러로 간주 (HTML 차단 메시지 등)
+             console.error('No <rss> tag found. Data:', xmlData.substring(0, 100));
+             res.set('Content-Type', 'text/plain');
+             return res.send('[Error] Medium Server did not return RSS XML.');
         }
 
-        // 기존 치환 로직들...
+        // <rss> 위치부터 시작하도록 자름
+        xmlData = xmlData.substring(rssStartIndex);
+
+        // 1. WRAPPER 중복 제거
         while (xmlData.includes(WRAPPER)) {
             xmlData = xmlData.replaceAll(WRAPPER, '');
         }
 
+        // 2. <link> 태그 주소 변환
         xmlData = xmlData.replace(
             /(<link>)(.*?)(<\/link>)/g, 
             (match, p1, p2, p3) => {
@@ -103,6 +117,7 @@ app.get('/medium/rss', async (req, res) => {
             }
         );
 
+        // 3. <atom:link> 태그 주소 변환
         xmlData = xmlData.replace(
             /(<atom:link href=")(.*?)(")/g,
             (match, p1, p2, p3) => {
@@ -113,21 +128,16 @@ app.get('/medium/rss', async (req, res) => {
             }
         );
 
-        // ========================================================
-        // [중요] 범인 색출을 위해 Content-Type을 'text/plain'으로 변경
-        // 이렇게 하면 브라우저가 에러 화면 대신 '실제 데이터'를 보여줍니다.
-        // ========================================================
-        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-        
-        // 데이터의 맨 앞뒤 공백을 한 번 더 제거하고 보냄
-        res.send(xmlData.trim());
+        // [최종 설정] 이제 다시 XML로 선언
+        res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+        res.status(200).send(xmlData);
 
     } catch (error) {
+        console.error(error);
         res.setHeader('Content-Type', 'text/plain');
-        res.status(500).send(`Error: ${error.message}`);
+        res.status(500).send(`Server Error: ${error.message}`);
     }
 });
-
 
 
 
