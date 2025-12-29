@@ -91,47 +91,56 @@ app.get('/medium/rss', async (req, res) => {
     }
 });
 
+
+
+
+
+
 // =========================================================
 // [기능 5] X(트위터) RSS 변환기 (/x/rss)
 // =========================================================
 app.get('/x/rss', async (req, res) => {
-    // 1. 가져올 트위터 아이디
     const TWITTER_ID = 'youwo296196';
     
-    // 2. 우회 서버 (Nitter) 목록
-    // 트위터가 막으면 이 주소를 다른 걸로 바꿔야 합니다. (구글에 'nitter instances' 검색)
-    // 추천: 'https://nitter.privacydev.net', 'https://nitter.poast.org' 등
-    const BRIDGE_URL = 'https://nitter.privacydev.net'; 
+    // [수정함] 살아있는 다른 서버 목록 (하나씩 주석 풀어서 테스트 해보세요)
+    // 1번 후보 (추천):
+    const BRIDGE_URL = 'https://nitter.poast.org'; 
+    // 2번 후보: 'https://nitter.lucabased.xyz';
+    // 3번 후보: 'https://nitter.soopy.moe';
+
     const TARGET_RSS_URL = `${BRIDGE_URL}/${TWITTER_ID}/rss`;
 
-    // Vercel 주소 및 포장지
+    // Vercel 주소
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const host = req.headers.host;
     const MY_DOMAIN = `${protocol}://${host}`;
     const WRAPPER = `${MY_DOMAIN}/go?url=`;
 
     try {
-        const response = await fetch(TARGET_RSS_URL);
-        if (!response.ok) throw new Error('Twitter RSS Bridge Failed');
+        // 타임아웃 설정 (3초 안에 안 되면 에러 처리)
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3000);
+
+        const response = await fetch(TARGET_RSS_URL, { signal: controller.signal });
+        clearTimeout(timeout);
+
+        if (!response.ok) throw new Error('Twitter Bridge Blocked');
 
         let xmlData = await response.text();
 
-        // 3. 링크 주소 세탁 (Nitter 주소를 -> 원래 x.com 주소로 변경 후 -> 내 껍데기 씌우기)
-        
-        // (1) 먼저 우회 서버 주소(nitter...)를 진짜 트위터 주소(x.com)로 다 바꿉니다.
-        // 정규식으로 'https://nitter...' 부분을 찾아서 'https://x.com'으로 변경
-        const bridgeRegex = new RegExp(BRIDGE_URL, 'g'); // /https:\/\/nitter.../g
+        // 1. 우회 주소(nitter...)를 -> x.com으로 세탁
+        const bridgeRegex = new RegExp(BRIDGE_URL, 'g'); 
         xmlData = xmlData.replace(bridgeRegex, 'https://x.com');
         
-        // (2) twitter.com도 x.com으로 통일
+        // 2. twitter.com -> x.com 통일
         xmlData = xmlData.replaceAll('https://twitter.com', 'https://x.com');
 
-        // (3) 중복 껍데기 청소
+        // 3. 중복 껍데기 청소
         while (xmlData.includes(WRAPPER)) {
             xmlData = xmlData.replaceAll(WRAPPER, '');
         }
 
-        // (4) 최종 포장 (x.com 주소를 내 주소로 감싸기)
+        // 4. 최종 포장
         xmlData = xmlData.replaceAll(
             'https://x.com', 
             `${WRAPPER}https://x.com`
@@ -142,8 +151,10 @@ app.get('/x/rss', async (req, res) => {
         res.send(xmlData);
 
     } catch (error) {
-        console.error(error);
-        res.status(500).send('X(Twitter) RSS Error: Bridge server might be blocked.');
+        console.error("X RSS Error:", error.message);
+        // 실패 시 에러 메시지 대신 빈 XML을 보내서 서버 다운 방지
+        res.set('Content-Type', 'application/xml');
+        res.send('<rss version="2.0"><channel><title>X RSS Error</title><description>Bridge Blocked</description></channel></rss>');
     }
 });
 
