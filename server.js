@@ -238,6 +238,10 @@ app.get('/substack/rss', async (req, res) => {
         }
 
   xmlData = xmlData.trim(); // 공백만 제거
+        // [추가 추천] 혹시나 Substack이 <?xml 선언을 안 줬을 때를 대비한 안전장치
+if (!xmlData.startsWith('<?xml')) {
+    xmlData = '<?xml version="1.0" encoding="UTF-8"?>\n' + xmlData;
+}
 
         // 3. 기존 껍데기(WRAPPER) 중복 방지 청소
         while (xmlData.includes(WRAPPER)) {
