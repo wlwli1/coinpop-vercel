@@ -54,10 +54,6 @@ app.get('/naver/rss', async (req, res) => {
 
 
 
-
-// =========================================================
-// [최종 수정] 4. 미디엄 RSS 변환기 (XML 무결성 강화)
-// =========================================================
 app.get('/medium/rss', async (req, res) => {
     const MEDIUM_ID = '@winnerss';
     const TARGET_RSS_URL = `https://medium.com/feed/${MEDIUM_ID}`;
@@ -70,40 +66,48 @@ app.get('/medium/rss', async (req, res) => {
     try {
         const response = await fetch(TARGET_RSS_URL, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+                // User-Agent를 조금 더 일반적인 브라우저처럼 변경 (차단 우회 시도)
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
             }
         });
 
-        if (!response.ok) throw new Error(`Medium Blocked: ${response.status}`);
+        if (!response.ok) throw new Error(`Medium Status Error: ${response.status}`);
 
         let xmlData = await response.text();
 
-        // [중요] XML 맨 앞에 공백이 있으면 구글이 못 읽음. 공백 제거 (Trim)
-        xmlData = xmlData.trim();
+        // [안전장치 1] BOM(Byte Order Mark) 및 앞뒤 공백 제거
+        // 눈에 안 보이는 \uFEFF 문자가 에러의 주범일 수 있음
+        xmlData = xmlData.replace(/^\uFEFF/, '').trim();
+
+        // [안전장치 2] 진짜 XML인지 확인
+        // Medium이 차단하면 HTML(<!DOCTYPE html...)을 보내는데, 이걸 XML로 보내면 에러남
+        if (!xmlData.startsWith('<?xml')) {
+            console.error('Medium returned HTML instead of XML (Likely Blocked):', xmlData.substring(0, 100));
+            return res.status(503).send('Medium Server Blocked Bot request. Please try again later.');
+        }
 
         // 1. 기존 껍데기 청소
         while (xmlData.includes(WRAPPER)) {
             xmlData = xmlData.replaceAll(WRAPPER, '');
         }
 
-        // 2. 주소 포장 (정규식 강화)
-        // <link> 태그 사이의 주소만 정확히 타격
+        // 2. 주소 포장 (정규식: <link> 태그 내부만 타겟)
         xmlData = xmlData.replace(
             /(<link>)(.*?)(<\/link>)/g, 
             (match, p1, p2, p3) => {
-                // p2가 실제 URL
-                if (p2.includes('medium.com')) {
+                // p2(주소)에 내 도메인이 이미 없고, medium이 포함된 경우만
+                if (p2.includes('medium.com') && !p2.includes(MY_DOMAIN)) {
                     return `${p1}${WRAPPER}${p2}${p3}`;
                 }
                 return match;
             }
         );
 
-        // 3. Atom Link 태그 처리 (미디엄이 쓰는 또 다른 주소 방식)
+        // 3. Atom Link 태그 처리
         xmlData = xmlData.replace(
             /(<atom:link href=")(.*?)(")/g,
             (match, p1, p2, p3) => {
-                if (p2.includes('medium.com')) {
+                if (p2.includes('medium.com') && !p2.includes(MY_DOMAIN)) {
                     return `${p1}${WRAPPER}${p2}${p3}`;
                 }
                 return match;
@@ -111,12 +115,11 @@ app.get('/medium/rss', async (req, res) => {
         );
 
         res.set('Content-Type', 'application/xml; charset=utf-8');
-        // 구글 봇이 헷갈리지 않게 200 OK 명시
         res.status(200).send(xmlData);
 
     } catch (error) {
-        console.error(error);
-        res.status(500).send('Error');
+        console.error('RSS Error:', error);
+        res.status(500).send('Server Error');
     }
 });
 
