@@ -152,97 +152,87 @@ app.get('/medium/rss', async (req, res) => {
 
 
 
-
 // =========================================================
-// [기능 5] X(트위터) RSS 변환기 (자동 우회 시스템 적용)
+// [유튜브 RSS] 유튜브는 <feed> 태그를 사용하는 Atom 방식입니다.
 // =========================================================
-app.get('/x/rss', async (req, res) => {
-    const TWITTER_ID = 'youwo296196';
+app.get('/youtube/rss', async (req, res) => {
+    // 👇 아까 찾은 채널 ID를 여기에 넣으세요!
+    const CHANNEL_ID = 'UCap7iEkd2bYDiR3eQ67rl3g'; // (예: UC-lHJZR3Gqxm24_Vd_AJ5Yw)
+    
+    const TARGET_RSS_URL = `https://www.youtube.com/feeds/videos.xml?channel_id=${CHANNEL_ID}`;
 
-    // [핵심] 살아있는 Nitter 서버 후보군 (순서대로 시도함)
-    const BRIDGES = [
-        'https://nitter.poast.org',
-        'https://nitter.privacydev.net',
-        'https://nitter.lucabased.xyz',
-        'https://nitter.soopy.moe',
-        'https://nitter.uni-sonia.com'
-    ];
-
-    // Vercel 주소 감지
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const host = req.headers.host;
     const MY_DOMAIN = `${protocol}://${host}`;
     const WRAPPER = `${MY_DOMAIN}/go?url=`;
 
-    let xmlData = null;
-    let usedBridge = '';
-
-    // [반복문] 살아있는 서버 찾기 (1번부터 차례대로 노크)
-    for (const bridge of BRIDGES) {
-        try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 4000); // 4초 타임아웃
-
-            console.log(`Trying Bridge: ${bridge}...`);
-            const response = await fetch(`${bridge}/${TWITTER_ID}/rss`, { signal: controller.signal });
-            clearTimeout(timeout);
-
-            if (response.ok) {
-                xmlData = await response.text();
-                // RSS 데이터가 너무 짧거나(차단됨), 에러 메시지면 패스
-                if (!xmlData.includes('<rss') || xmlData.includes('Error')) {
-                    throw new Error('Blocked content');
-                }
-                usedBridge = bridge;
-                console.log(`Success with: ${bridge}`);
-                break; // 성공했으니 반복문 탈출!
-            }
-        } catch (e) {
-            console.log(`Failed: ${bridge}`);
-            continue; // 실패하면 다음 후보로 넘어감
-        }
-    }
-
-    // 모든 후보가 다 실패했을 경우
-    if (!xmlData) {
-        res.set('Content-Type', 'application/xml');
-        return res.send(`
-            <rss version="2.0">
-                <channel>
-                    <title>All Bridges Blocked</title>
-                    <description>Twitter is blocking all Nitter instances currently.</description>
-                </channel>
-            </rss>
-        `);
-    }
-
-    // ================= [데이터 세탁] =================
     try {
-        // 1. 성공한 Nitter 주소를 -> x.com으로 변경
-        const bridgeRegex = new RegExp(usedBridge, 'g'); 
-        xmlData = xmlData.replace(bridgeRegex, 'https://x.com');
-        
-        // 2. 혹시 모를 twitter.com -> x.com 통일
-        xmlData = xmlData.replaceAll('https://twitter.com', 'https://x.com');
+        // [캐시 방지]
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
 
-        // 3. 중복 껍데기 청소
+        const response = await fetch(TARGET_RSS_URL, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+            }
+        });
+
+        if (!response.ok) throw new Error(`YouTube Error: ${response.status}`);
+
+        let xmlData = await response.text();
+
+        // =========================================================
+        // [핵심] Prolog 에러 방지 (유튜브는 <feed>로 시작합니다)
+        // =========================================================
+        const feedStartIndex = xmlData.indexOf('<feed');
+        
+        if (feedStartIndex === -1) {
+             console.error('No <feed> tag found.');
+             res.set('Content-Type', 'text/plain');
+             return res.send('[Error] YouTube가 XML을 주지 않았습니다.');
+        }
+
+        // <feed> 앞부분 싹둑
+        xmlData = xmlData.substring(feedStartIndex);
+
+        // 1. 기존 WRAPPER 청소
         while (xmlData.includes(WRAPPER)) {
             xmlData = xmlData.replaceAll(WRAPPER, '');
         }
 
-        // 4. 최종 포장
-        xmlData = xmlData.replaceAll(
-            'https://x.com', 
-            `${WRAPPER}https://x.com`
+        // 2. 링크 주소 포장
+        // 유튜브는 <link rel="alternate" href="..."> 형식을 씁니다.
+        xmlData = xmlData.replace(
+            /(href=")(https:\/\/www\.youtube\.com\/watch\?v=)(.*?)(")/g, 
+            (match, p1, p2, p3, p4) => {
+                // 이미 내 도메인이 있으면 패스
+                if (match.includes(MY_DOMAIN)) return match;
+                
+                // p2+p3가 전체 주소입니다.
+                const fullYoutubeLink = `${p2}${p3}`;
+                return `${p1}${WRAPPER}${fullYoutubeLink}${p4}`;
+            }
+        );
+
+        // [추가] 숏츠(Shorts) 같은 게 섞여 있을 경우를 대비해 일반 링크 태그도 처리
+        xmlData = xmlData.replace(
+            /(<link>)(.*?)(<\/link>)/g,
+            (match, p1, p2, p3) => {
+                if (p2.includes('youtube.com') && !p2.includes(MY_DOMAIN)) {
+                    return `${p1}${WRAPPER}${p2}${p3}`;
+                }
+                return match;
+            }
         );
 
         res.set('Content-Type', 'application/xml; charset=utf-8');
-        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.send(xmlData);
+        res.status(200).send(xmlData);
 
     } catch (error) {
-        console.error("X Processing Error:", error);
-        res.status(500).send('Processing Error');
+        console.error(error);
+        res.set('Content-Type', 'text/plain');
+        res.status(500).send(`Server Error: ${error.message}`);
     }
 });
 
