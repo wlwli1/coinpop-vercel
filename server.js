@@ -54,10 +54,13 @@ app.get('/naver/rss', async (req, res) => {
 
 
 
+
+//미디엄
 app.get('/medium/rss', async (req, res) => {
     const MEDIUM_ID = '@winnerss';
     const TARGET_RSS_URL = `https://medium.com/feed/${MEDIUM_ID}`;
 
+    // 내 도메인 설정
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const host = req.headers.host;
     const MY_DOMAIN = `${protocol}://${host}`;
@@ -66,36 +69,47 @@ app.get('/medium/rss', async (req, res) => {
     try {
         const response = await fetch(TARGET_RSS_URL, {
             headers: {
-                // User-Agent를 조금 더 일반적인 브라우저처럼 변경 (차단 우회 시도)
+                // 일반 브라우저인 척 위장
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
             }
         });
 
-        if (!response.ok) throw new Error(`Medium Status Error: ${response.status}`);
+        if (!response.ok) {
+            throw new Error(`Medium Server Error: ${response.status}`);
+        }
 
         let xmlData = await response.text();
 
-        // [안전장치 1] BOM(Byte Order Mark) 및 앞뒤 공백 제거
-        // 눈에 안 보이는 \uFEFF 문자가 에러의 주범일 수 있음
-        xmlData = xmlData.replace(/^\uFEFF/, '').trim();
+        // =========================================================
+        // [핵심 수정] 무식하지만 확실한 방법
+        // 맨 앞에서부터 '<?xml' 이라는 글자가 어디있는지 찾습니다.
+        // =========================================================
+        const xmlStartIndex = xmlData.indexOf('<?xml');
 
-        // [안전장치 2] 진짜 XML인지 확인
-        // Medium이 차단하면 HTML(<!DOCTYPE html...)을 보내는데, 이걸 XML로 보내면 에러남
-        if (!xmlData.startsWith('<?xml')) {
-            console.error('Medium returned HTML instead of XML (Likely Blocked):', xmlData.substring(0, 100));
-            return res.status(503).send('Medium Server Blocked Bot request. Please try again later.');
+        // 1. 만약 '<?xml' 이라는 글자가 아예 없다면? -> 차단당했거나 HTML임
+        if (xmlStartIndex === -1) {
+            console.error('Not an XML format. Response starts with:', xmlData.substring(0, 50));
+            // 브라우저에서 원인을 눈으로 볼 수 있게 text/plain으로 에러 내용 출력
+            res.set('Content-Type', 'text/plain; charset=utf-8');
+            return res.send(`[Error] Medium이 XML을 주지 않았습니다.\n\n받은 데이터 앞부분:\n${xmlData.substring(0, 500)}`);
         }
 
-        // 1. 기존 껍데기 청소
+        // 2. '<?xml' 앞부분에 있는 모든 찌꺼기(공백, BOM, 쓰레기값) 잘라내기
+        if (xmlStartIndex > 0) {
+            xmlData = xmlData.substring(xmlStartIndex);
+        }
+
+        // 3. 기존 로직 수행 (링크 변환)
+        
+        // WRAPPER 청소
         while (xmlData.includes(WRAPPER)) {
             xmlData = xmlData.replaceAll(WRAPPER, '');
         }
 
-        // 2. 주소 포장 (정규식: <link> 태그 내부만 타겟)
+        // <link> 변환
         xmlData = xmlData.replace(
             /(<link>)(.*?)(<\/link>)/g, 
             (match, p1, p2, p3) => {
-                // p2(주소)에 내 도메인이 이미 없고, medium이 포함된 경우만
                 if (p2.includes('medium.com') && !p2.includes(MY_DOMAIN)) {
                     return `${p1}${WRAPPER}${p2}${p3}`;
                 }
@@ -103,7 +117,7 @@ app.get('/medium/rss', async (req, res) => {
             }
         );
 
-        // 3. Atom Link 태그 처리
+        // <atom:link> 변환
         xmlData = xmlData.replace(
             /(<atom:link href=")(.*?)(")/g,
             (match, p1, p2, p3) => {
@@ -114,12 +128,15 @@ app.get('/medium/rss', async (req, res) => {
             }
         );
 
+        // [중요] Content-Type 설정
         res.set('Content-Type', 'application/xml; charset=utf-8');
         res.status(200).send(xmlData);
 
     } catch (error) {
-        console.error('RSS Error:', error);
-        res.status(500).send('Server Error');
+        console.error('RSS Process Error:', error);
+        // 에러 상황을 보기 위해 text/plain으로 출력
+        res.set('Content-Type', 'text/plain; charset=utf-8');
+        res.status(500).send(`Server Error 발생:\n${error.message}`);
     }
 });
 
