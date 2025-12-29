@@ -51,8 +51,12 @@ app.get('/naver/rss', async (req, res) => {
     }
 });
 
+
+
+
+
 // =========================================================
-// [추가됨] 4. 미디엄 RSS 변환기 (/medium/rss)
+// [최종 수정] 4. 미디엄 RSS 변환기 (XML 무결성 강화)
 // =========================================================
 app.get('/medium/rss', async (req, res) => {
     const MEDIUM_ID = '@winnerss';
@@ -64,32 +68,68 @@ app.get('/medium/rss', async (req, res) => {
     const WRAPPER = `${MY_DOMAIN}/go?url=`;
 
     try {
-        const response = await fetch(TARGET_RSS_URL);
-        if (!response.ok) throw new Error('Medium RSS Fetch Failed');
+        const response = await fetch(TARGET_RSS_URL, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+            }
+        });
+
+        if (!response.ok) throw new Error(`Medium Blocked: ${response.status}`);
 
         let xmlData = await response.text();
 
-        // 1. 혹시 모를 중복 껍데기 청소
+        // [중요] XML 맨 앞에 공백이 있으면 구글이 못 읽음. 공백 제거 (Trim)
+        xmlData = xmlData.trim();
+
+        // 1. 기존 껍데기 청소
         while (xmlData.includes(WRAPPER)) {
             xmlData = xmlData.replaceAll(WRAPPER, '');
         }
 
-        // 2. 미디엄 주소 포장하기
-        // (미디엄 링크는 모두 https://medium.com 으로 시작하므로 통째로 감쌉니다)
-        xmlData = xmlData.replaceAll(
-            'https://medium.com', 
-            `${WRAPPER}https://medium.com`
+        // 2. 주소 포장 (정규식 강화)
+        // <link> 태그 사이의 주소만 정확히 타격
+        xmlData = xmlData.replace(
+            /(<link>)(.*?)(<\/link>)/g, 
+            (match, p1, p2, p3) => {
+                // p2가 실제 URL
+                if (p2.includes('medium.com')) {
+                    return `${p1}${WRAPPER}${p2}${p3}`;
+                }
+                return match;
+            }
+        );
+
+        // 3. Atom Link 태그 처리 (미디엄이 쓰는 또 다른 주소 방식)
+        xmlData = xmlData.replace(
+            /(<atom:link href=")(.*?)(")/g,
+            (match, p1, p2, p3) => {
+                if (p2.includes('medium.com')) {
+                    return `${p1}${WRAPPER}${p2}${p3}`;
+                }
+                return match;
+            }
         );
 
         res.set('Content-Type', 'application/xml; charset=utf-8');
-        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.send(xmlData);
+        // 구글 봇이 헷갈리지 않게 200 OK 명시
+        res.status(200).send(xmlData);
 
     } catch (error) {
         console.error(error);
-        res.status(500).send('Medium RSS Error');
+        res.status(500).send('Error');
     }
 });
+
+
+
+
+
+
+
+
+
+
+
 
 
 
