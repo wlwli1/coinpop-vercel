@@ -16,6 +16,9 @@ app.get('/go', (req, res) => {
 
 // 3. RSS 변환기 (/naver/rss)
 app.get('/naver/rss', async (req, res) => {
+    // [주의] NAVER_ID 선언 확인
+    // const NAVER_ID = 'kj1nhon9o114'; 
+
     // Vercel 주소 자동 감지
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const host = req.headers.host;
@@ -35,20 +38,20 @@ app.get('/naver/rss', async (req, res) => {
             xmlData = xmlData.replaceAll(WRAPPER, '');
         }
 
- // 2. [핵심] 모바일 PostView 주소로 변환 + 안전하게 포장
+        // 2. [수정됨] 사장님이 확인한 '찐주소' (경로 방식)로 변환
         const postUrlRegex = new RegExp(`https://blog\\.naver\\.com/${NAVER_ID}/([0-9]+)`, 'g');
 
         xmlData = xmlData.replace(postUrlRegex, (match, logNo) => {
-            // (1) 우리가 원하는 진짜 주소 (여기에 & 기호가 들어있어서 에러가 났던 것)
-            const cleanMobileUrl = `https://m.blog.naver.com/PostView.naver?blogId=${NAVER_ID}&logNo=${logNo}`;
+            // ▼ 여기가 바뀌었습니다. PostView 빼고, 심플한 경로 방식으로 변경!
+            // 예: https://m.blog.naver.com/kj1nhon9o114/224126323162
+            const cleanMobileUrl = `https://m.blog.naver.com/${NAVER_ID}/${logNo}`;
             
-            // (2) [수정됨] URL 인코딩 (필수!)
-            // - 효과 1: & 기호를 %26으로 바꿔서 XML 에러를 없앱니다.
-            // - 효과 2: 리다이렉트 서버가 주소를 끊기지 않고 통째로 인식하게 해줍니다.
+            // 인코딩은 필수 (XML 에러 방지 및 리다이렉트 보호)
             const encodedUrl = encodeURIComponent(cleanMobileUrl);
 
             return `${WRAPPER}${encodedUrl}`;
         });
+
         res.set('Content-Type', 'application/xml; charset=utf-8');
         res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.send(xmlData);
