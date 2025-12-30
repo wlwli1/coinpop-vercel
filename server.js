@@ -19,7 +19,6 @@ app.get('/naver/rss', async (req, res) => {
     // [주의] NAVER_ID 선언 확인
     // const NAVER_ID = 'kj1nhon9o114'; 
 
-    // Vercel 주소 자동 감지
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const host = req.headers.host;
     const MY_DOMAIN = `${protocol}://${host}`;
@@ -33,23 +32,19 @@ app.get('/naver/rss', async (req, res) => {
 
         let xmlData = await response.text();
 
-        // 1. 중복 껍데기 제거
         while (xmlData.includes(WRAPPER)) {
             xmlData = xmlData.replaceAll(WRAPPER, '');
         }
 
-        // 2. [수정됨] PC 버전 주소 그대로 사용 (파라미터 제거)
+        // [SEO 필승 전략] 
+        // 1. PC 주소(iframe) 대신 모바일 주소(Raw HTML) 사용
+        // 2. 파라미터 없이 깔끔한 경로 방식 (/아이디/글번호) 사용
         const postUrlRegex = new RegExp(`https://blog\\.naver\\.com/${NAVER_ID}/([0-9]+)`, 'g');
 
         xmlData = xmlData.replace(postUrlRegex, (match, logNo) => {
-            // ▼ 사장님 요청 사항: 모바일(m) 말고, 파라미터 없이, PC 주소 그대로!
-            // 결과 예시: https://blog.naver.com/kj1nhon9o114/224126323162
-            const cleanPcUrl = `https://blog.naver.com/${NAVER_ID}/${logNo}`;
-            
-            // 리다이렉트가 끊기지 않으려면 인코딩(안전포장)은 딱 한 번 해야 합니다.
-            // (이걸 안 하면 주소가 전달되다 말아버립니다)
-            const encodedUrl = encodeURIComponent(cleanPcUrl);
-
+            // 이 주소가 구글 봇이 가장 좋아하는 형태입니다.
+            const cleanMobileUrl = `https://m.blog.naver.com/${NAVER_ID}/${logNo}`;
+            const encodedUrl = encodeURIComponent(cleanMobileUrl);
             return `${WRAPPER}${encodedUrl}`;
         });
 
