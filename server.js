@@ -30,16 +30,24 @@ app.get('/naver/rss', async (req, res) => {
 
         let xmlData = await response.text();
 
-        // 중복 껍데기 제거 (청소)
+        // 1. 중복 껍데기 제거 (기존에 씌워진 게 있다면 벗기기)
         while (xmlData.includes(WRAPPER)) {
             xmlData = xmlData.replaceAll(WRAPPER, '');
         }
 
-        // 껍데기 입히기
-        xmlData = xmlData.replaceAll(
-            'https://blog.naver.com', 
-            `${WRAPPER}https://blog.naver.com`
-        );
+        // 2. [핵심 수정] 일반 블로그 주소를 '모바일 PostView' 주소로 변환 + 껍데기 씌우기
+        // 정규식 설명: https://blog.naver.com/아이디/글번호 형식을 찾아서 글번호만 쏙 뽑아냅니다.
+        const postUrlRegex = new RegExp(`https://blog\\.naver\\.com/${NAVER_ID}/([0-9]+)`, 'g');
+
+        xmlData = xmlData.replace(postUrlRegex, (match, logNo) => {
+            // 우리가 원하는 '진짜 알맹이' 주소 포맷 (모바일용 PostView)
+            const mobilePostViewUrl = `https://m.blog.naver.com/PostView.naver?blogId=${NAVER_ID}&logNo=${logNo}&noTrackingCode=true`;
+            
+            // "내 사이트 리다이렉트(WRAPPER)" + "진짜 주소" 합체
+            return `${WRAPPER}${mobilePostViewUrl}`;
+        });
+
+        // (기존의 단순 replaceAll('https://blog.naver.com', ...) 코드는 이제 필요 없으므로 삭제됨)
 
         res.set('Content-Type', 'application/xml; charset=utf-8');
         res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -57,136 +65,7 @@ app.get('/naver/rss', async (req, res) => {
 
 
 
-//미디엄
 
-app.get('/medium/rss', async (req, res) => {
-    const MEDIUM_ID = '@winnerss';
-    const TARGET_RSS_URL = `https://medium.com/feed/${MEDIUM_ID}`;
-    
-    // ... (기본 설정 유지) ...
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers.host;
-    const MY_DOMAIN = `${protocol}://${host}`;
-    const WRAPPER = `${MY_DOMAIN}/go?url=`;
-
-    try {
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-
-        const response = await fetch(TARGET_RSS_URL, {
-            headers: { 'User-Agent': 'Mozilla/5.0 ...' }
-        });
-
-        if (!response.ok) throw new Error(`Medium Error: ${response.status}`);
-
-        let xmlData = await response.text();
-
-        // [수정] 무조건 자르는 substring 제거!
-        // 대신 맨 앞의 공백(화이트스페이스)만 제거 (trim)
-        xmlData = xmlData.trim();
-
-        // 만약 가져온 데이터에 <?xml ... ?> 선언이 아예 없다면 강제로 붙여주는 것이 안전함
-        if (!xmlData.startsWith('<?xml')) {
-            xmlData = '<?xml version="1.0" encoding="UTF-8"?>\n' + xmlData;
-        }
-
-        // 1. WRAPPER 중복 제거
-        while (xmlData.includes(WRAPPER)) {
-            xmlData = xmlData.replaceAll(WRAPPER, '');
-        }
-
-        // 2. <link> 태그 주소 변환 (기존 로직 유지)
-        xmlData = xmlData.replace(
-            /(<link>)(.*?)(<\/link>)/g, 
-            (match, p1, p2, p3) => {
-                if (p2.includes('medium.com') && !p2.includes(MY_DOMAIN)) {
-                    // CDATA가 있을 수 있으므로 단순 텍스트일 때만 처리하거나 주의 필요
-                    // 여기서는 기존 로직 유지
-                    return `${p1}${WRAPPER}${p2}${p3}`;
-                }
-                return match;
-            }
-        );
-        // <atom:link> 처리 등 기존 로직 유지...
-        xmlData = xmlData.replace(
-            /(<atom:link href=")(.*?)(")/g,
-            (match, p1, p2, p3) => {
-                if (p2.includes('medium.com') && !p2.includes(MY_DOMAIN)) {
-                    return `${p1}${WRAPPER}${p2}${p3}`;
-                }
-                return match;
-            }
-        );
-
-        res.setHeader('Content-Type', 'application/xml; charset=utf-8');
-        res.status(200).send(xmlData);
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).send(`Server Error: ${error.message}`);
-    }
-});
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// =========================================================
-// [유튜브 RSS] 유튜브는 <feed> 태그를 사용하는 Atom 방식입니다.
-// =========================================================
-app.get('/youtube/rss', async (req, res) => {
-    const CHANNEL_ID = 'UCap7iEkd2bYDiR3eQ67rl3g'; 
-    const TARGET_RSS_URL = `https://www.youtube.com/feeds/videos.xml?channel_id=${CHANNEL_ID}`;
-    
-    // ... (기본 설정 유지) ...
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers.host;
-    const MY_DOMAIN = `${protocol}://${host}`;
-    const WRAPPER = `${MY_DOMAIN}/go?url=`;
-
-    try {
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        
-        const response = await fetch(TARGET_RSS_URL);
-        if (!response.ok) throw new Error(`YouTube Error: ${response.status}`);
-
-        let xmlData = await response.text();
-
-        // [수정] 머리 자르는 코드 삭제 (substring 제거)
-        xmlData = xmlData.trim(); // 공백만 제거
-
-        // 유튜브는 기본적으로 <?xml ...?>을 잘 줍니다. 건드리지 마세요.
-
-        // 1. 기존 WRAPPER 청소
-        while (xmlData.includes(WRAPPER)) {
-            xmlData = xmlData.replaceAll(WRAPPER, '');
-        }
-
-        // 2. 링크 주소 포장 (기존 로직 유지)
-        xmlData = xmlData.replace(
-            /(href=")(https:\/\/www\.youtube\.com\/watch\?v=)(.*?)(")/g, 
-            (match, p1, p2, p3, p4) => {
-                if (match.includes(MY_DOMAIN)) return match;
-                return `${p1}${WRAPPER}${p2}${p3}${p4}`;
-            }
-        );
-
-        res.set('Content-Type', 'application/xml; charset=utf-8');
-        res.status(200).send(xmlData);
-
-    } catch (error) {
-        // ... 에러 처리
-        res.status(500).send(`Error`);
-    }
-});
 
 
 
