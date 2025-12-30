@@ -38,16 +38,17 @@ app.get('/naver/rss', async (req, res) => {
             xmlData = xmlData.replaceAll(WRAPPER, '');
         }
 
-        // 2. [수정됨] 사장님이 확인한 '찐주소' (경로 방식)로 변환
+        // 2. [수정됨] PC 버전 주소 그대로 사용 (파라미터 제거)
         const postUrlRegex = new RegExp(`https://blog\\.naver\\.com/${NAVER_ID}/([0-9]+)`, 'g');
 
         xmlData = xmlData.replace(postUrlRegex, (match, logNo) => {
-            // ▼ 여기가 바뀌었습니다. PostView 빼고, 심플한 경로 방식으로 변경!
-            // 예: https://m.blog.naver.com/kj1nhon9o114/224126323162
-            const cleanMobileUrl = `https://m.blog.naver.com/${NAVER_ID}/${logNo}`;
+            // ▼ 사장님 요청 사항: 모바일(m) 말고, 파라미터 없이, PC 주소 그대로!
+            // 결과 예시: https://blog.naver.com/kj1nhon9o114/224126323162
+            const cleanPcUrl = `https://blog.naver.com/${NAVER_ID}/${logNo}`;
             
-            // 인코딩은 필수 (XML 에러 방지 및 리다이렉트 보호)
-            const encodedUrl = encodeURIComponent(cleanMobileUrl);
+            // 리다이렉트가 끊기지 않으려면 인코딩(안전포장)은 딱 한 번 해야 합니다.
+            // (이걸 안 하면 주소가 전달되다 말아버립니다)
+            const encodedUrl = encodeURIComponent(cleanPcUrl);
 
             return `${WRAPPER}${encodedUrl}`;
         });
