@@ -35,18 +35,20 @@ app.get('/naver/rss', async (req, res) => {
             xmlData = xmlData.replaceAll(WRAPPER, '');
         }
 
-        // 2. [핵심] 모바일 PostView 주소로 변환 (추적 코드 삭제됨)
-        // 정규식: blog.naver.com/아이디/글번호 패턴 추출
+ // 2. [핵심] 모바일 PostView 주소로 변환 + 안전하게 포장
         const postUrlRegex = new RegExp(`https://blog\\.naver\\.com/${NAVER_ID}/([0-9]+)`, 'g');
 
         xmlData = xmlData.replace(postUrlRegex, (match, logNo) => {
-            // ▼ 여기가 수정되었습니다. 불필요한 파라미터 싹 다 제거!
-            // 오직 blogId와 logNo만 있으면 글은 완벽하게 열립니다.
+            // (1) 우리가 원하는 진짜 주소 (여기에 & 기호가 들어있어서 에러가 났던 것)
             const cleanMobileUrl = `https://m.blog.naver.com/PostView.naver?blogId=${NAVER_ID}&logNo=${logNo}`;
             
-            return `${WRAPPER}${cleanMobileUrl}`;
-        });
+            // (2) [수정됨] URL 인코딩 (필수!)
+            // - 효과 1: & 기호를 %26으로 바꿔서 XML 에러를 없앱니다.
+            // - 효과 2: 리다이렉트 서버가 주소를 끊기지 않고 통째로 인식하게 해줍니다.
+            const encodedUrl = encodeURIComponent(cleanMobileUrl);
 
+            return `${WRAPPER}${encodedUrl}`;
+        });
         res.set('Content-Type', 'application/xml; charset=utf-8');
         res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.send(xmlData);
