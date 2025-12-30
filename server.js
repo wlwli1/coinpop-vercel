@@ -30,24 +30,22 @@ app.get('/naver/rss', async (req, res) => {
 
         let xmlData = await response.text();
 
-        // 1. 중복 껍데기 제거 (기존에 씌워진 게 있다면 벗기기)
+        // 1. 중복 껍데기 제거
         while (xmlData.includes(WRAPPER)) {
             xmlData = xmlData.replaceAll(WRAPPER, '');
         }
 
-        // 2. [핵심 수정] 일반 블로그 주소를 '모바일 PostView' 주소로 변환 + 껍데기 씌우기
-        // 정규식 설명: https://blog.naver.com/아이디/글번호 형식을 찾아서 글번호만 쏙 뽑아냅니다.
+        // 2. [핵심] 모바일 PostView 주소로 변환 (추적 코드 삭제됨)
+        // 정규식: blog.naver.com/아이디/글번호 패턴 추출
         const postUrlRegex = new RegExp(`https://blog\\.naver\\.com/${NAVER_ID}/([0-9]+)`, 'g');
 
         xmlData = xmlData.replace(postUrlRegex, (match, logNo) => {
-            // 우리가 원하는 '진짜 알맹이' 주소 포맷 (모바일용 PostView)
-            const mobilePostViewUrl = `https://m.blog.naver.com/PostView.naver?blogId=${NAVER_ID}&logNo=${logNo}&noTrackingCode=true`;
+            // ▼ 여기가 수정되었습니다. 불필요한 파라미터 싹 다 제거!
+            // 오직 blogId와 logNo만 있으면 글은 완벽하게 열립니다.
+            const cleanMobileUrl = `https://m.blog.naver.com/PostView.naver?blogId=${NAVER_ID}&logNo=${logNo}`;
             
-            // "내 사이트 리다이렉트(WRAPPER)" + "진짜 주소" 합체
-            return `${WRAPPER}${mobilePostViewUrl}`;
+            return `${WRAPPER}${cleanMobileUrl}`;
         });
-
-        // (기존의 단순 replaceAll('https://blog.naver.com', ...) 코드는 이제 필요 없으므로 삭제됨)
 
         res.set('Content-Type', 'application/xml; charset=utf-8');
         res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -58,8 +56,6 @@ app.get('/naver/rss', async (req, res) => {
         res.status(500).send('RSS Error');
     }
 });
-
-
 
 
 
