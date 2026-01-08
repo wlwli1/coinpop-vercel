@@ -2,24 +2,21 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>페이지 이동 중...</title>
+    <title>이동 중</title>
     <script>
-        // URL에서 logNo 파라미터를 읽어옵니다.
         const urlParams = new URLSearchParams(window.location.search);
         const logNo = urlParams.get('logNo');
         const naverId = 'kj1nhon9o114';
 
+        // logNo가 있으면 특정 글로, 없으면 블로그 메인으로 리다이렉트
         if (logNo) {
-            // 구글 SEO를 위해 모바일 주소로 리다이렉트
-            const targetUrl = `https://m.blog.naver.com/${naverId}/${logNo}`;
-            window.location.replace(targetUrl);
+            window.location.replace(`https://m.blog.naver.com/${naverId}/${logNo}`);
         } else {
-            // 번호가 없으면 메인으로 이동
             window.location.replace(`https://m.blog.naver.com/${naverId}`);
         }
     </script>
 </head>
 <body>
-    <p>잠시 후 블로그로 이동합니다...</p>
+    <p>잠시 후 이동합니다...</p>
 </body>
 </html>
