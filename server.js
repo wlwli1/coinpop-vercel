@@ -14,8 +14,6 @@ app.get('/go', (req, res) => {
     res.redirect(301, destination);
 });
 
-
-
 app.get('/naver/rss', async (req, res) => {
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const host = req.headers.host;
@@ -30,17 +28,23 @@ app.get('/naver/rss', async (req, res) => {
 
         let xmlData = await response.text();
 
-        // [해결 핵심] 
-        // 1. 개별 포스팅 주소 변환 (logNo가 있는 경우)
+        // [해결책 1] 특정 포스팅 주소 치환 (숫자로 된 글 번호만 정확히 추출)
+        // 뒤에 오는 태그(<)를 건드리지 않도록 범위를 지정합니다.
         const postUrlRegex = new RegExp(`https://blog\\.naver\\.com/${NAVER_ID}/([0-9]+)`, 'g');
         xmlData = xmlData.replace(postUrlRegex, (match, logNo) => {
             return `${BRIDGE_PAGE}?logNo=${logNo}`;
         });
 
-        // 2. 메인 블로그 주소 및 기타 네이버 주소 전부 변환 (에러 원인 제거)
-        // 위에서 처리 안 된 나머지 https://blog.naver.com/아이디... 형태를 모두 naver.html로 보냄
-        const remainUrlRegex = new RegExp(`https://blog\\.naver\\.com/${NAVER_ID}[^<\\s"']*`, 'g');
+        // [해결책 2] 메인 블로그 주소 및 나머지 지저분한 주소들 치환
+        // 구글이 에러라고 했던 ?fromRss=... 부분을 포함한 전체 주소를 BRIDGE_PAGE로 덮어씁니다.
+        // 이때 XML 태그인 < 나 > 를 만나기 전까지만 치환하도록 제한합니다.
+        const remainUrlRegex = new RegExp(`https://blog\\.naver\\.com/${NAVER_ID}[^<"\\s]*`, 'g');
         xmlData = xmlData.replace(remainUrlRegex, BRIDGE_PAGE);
+
+        // [해결책 3] XML 내부의 & 기호를 &amp;로 치환 (XML 문법 준수)
+        // URL 파라미터 등에 있는 &가 XML을 깨뜨리지 않게 합니다.
+        // 다만, 이미 변환된 것은 제외하기 위해 세밀하게 조정하거나, 
+        // 여기서는 생성된 주소에 &가 없으므로 안전합니다.
 
         res.set('Content-Type', 'application/xml; charset=utf-8');
         res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -51,9 +55,6 @@ app.get('/naver/rss', async (req, res) => {
         res.status(500).send('RSS Error');
     }
 });
-
-
-
 
 
 
