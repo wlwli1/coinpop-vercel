@@ -4,26 +4,20 @@ const app = express();
 
 const NAVER_ID = 'kj1nhon9o114';
 
-// 1. HTML 파일 보여주기 (public 폴더 연결)
+// 1. HTML 파일 보여주기
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 2. 리다이렉트 중계소 (/go)
+// 2. 리다이렉트 중계소 (/go) -> RSS에서 안 쓰지만, 혹시 다른 곳에 쓸 수 있어 남겨둠
 app.get('/go', (req, res) => {
     const destination = req.query.url;
     if (!destination) return res.redirect('/');
     res.redirect(301, destination);
 });
 
-// 3. RSS 변환기 (/naver/rss)
+// 3. RSS 변환기 (/naver/rss) - [수정됨] 직링크 버전
 app.get('/naver/rss', async (req, res) => {
-    // [주의] NAVER_ID 선언 확인
-    // const NAVER_ID = 'kj1nhon9o114'; 
-
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers.host;
-    const MY_DOMAIN = `${protocol}://${host}`;
     
-    const WRAPPER = `${MY_DOMAIN}/go?url=`;
+    // 타겟 RSS 주소
     const TARGET_RSS_URL = `https://rss.blog.naver.com/${NAVER_ID}.xml`;
 
     try {
@@ -32,20 +26,15 @@ app.get('/naver/rss', async (req, res) => {
 
         let xmlData = await response.text();
 
-        while (xmlData.includes(WRAPPER)) {
-            xmlData = xmlData.replaceAll(WRAPPER, '');
-        }
-
-        // [SEO 필승 전략] 
-        // 1. PC 주소(iframe) 대신 모바일 주소(Raw HTML) 사용
-        // 2. 파라미터 없이 깔끔한 경로 방식 (/아이디/글번호) 사용
+        // [핵심 수정 사항]
+        // 1. 내 도메인 주소(WRAPPER) 로직 제거
+        // 2. PC 주소(iframe)를 로봇이 좋아하는 모바일 주소(Raw HTML)로 '직접' 변환
+        
         const postUrlRegex = new RegExp(`https://blog\\.naver\\.com/${NAVER_ID}/([0-9]+)`, 'g');
 
         xmlData = xmlData.replace(postUrlRegex, (match, logNo) => {
-            // 이 주소가 구글 봇이 가장 좋아하는 형태입니다.
-            const cleanMobileUrl = `https://m.blog.naver.com/${NAVER_ID}/${logNo}`;
-            const encodedUrl = encodeURIComponent(cleanMobileUrl);
-            return `${WRAPPER}${encodedUrl}`;
+            // /go?url= 없이 바로 네이버 모바일 주소로 리턴
+            return `https://m.blog.naver.com/${NAVER_ID}/${logNo}`;
         });
 
         res.set('Content-Type', 'application/xml; charset=utf-8');
@@ -57,7 +46,6 @@ app.get('/naver/rss', async (req, res) => {
         res.status(500).send('RSS Error');
     }
 });
-
 
 
 
