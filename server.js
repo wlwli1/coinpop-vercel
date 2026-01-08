@@ -14,10 +14,14 @@ app.get('/go', (req, res) => {
     res.redirect(301, destination);
 });
 
-// 3. RSS 변환기 (/naver/rss) - [수정됨] 직링크 버전
+// 2. RSS 변환기
 app.get('/naver/rss', async (req, res) => {
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers.host;
+    const MY_DOMAIN = `${protocol}://${host}`;
     
-    // 타겟 RSS 주소
+    // 이제 링크는 naver.html로 향합니다.
+    const BRIDGE_URL = `${MY_DOMAIN}/naver.html?logNo=`;
     const TARGET_RSS_URL = `https://rss.blog.naver.com/${NAVER_ID}.xml`;
 
     try {
@@ -26,15 +30,12 @@ app.get('/naver/rss', async (req, res) => {
 
         let xmlData = await response.text();
 
-        // [핵심 수정 사항]
-        // 1. 내 도메인 주소(WRAPPER) 로직 제거
-        // 2. PC 주소(iframe)를 로봇이 좋아하는 모바일 주소(Raw HTML)로 '직접' 변환
-        
+        // 기존 네이버 주소를 추출해서 우리 도메인의 naver.html 주소로 교체
         const postUrlRegex = new RegExp(`https://blog\\.naver\\.com/${NAVER_ID}/([0-9]+)`, 'g');
 
         xmlData = xmlData.replace(postUrlRegex, (match, logNo) => {
-            // /go?url= 없이 바로 네이버 모바일 주소로 리턴
-            return `https://m.blog.naver.com/${NAVER_ID}/${logNo}`;
+            // 결과 예시: https://coinpop.vercel.app/naver.html?logNo=12345
+            return `${BRIDGE_URL}${logNo}`;
         });
 
         res.set('Content-Type', 'application/xml; charset=utf-8');
@@ -46,8 +47,6 @@ app.get('/naver/rss', async (req, res) => {
         res.status(500).send('RSS Error');
     }
 });
-
-
 
 
 
