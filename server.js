@@ -14,14 +14,14 @@ app.get('/go', (req, res) => {
     res.redirect(301, destination);
 });
 
-// 2. RSS 변환기
+
+
 app.get('/naver/rss', async (req, res) => {
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const host = req.headers.host;
     const MY_DOMAIN = `${protocol}://${host}`;
     
-    // 이제 링크는 naver.html로 향합니다.
-    const BRIDGE_URL = `${MY_DOMAIN}/naver.html?logNo=`;
+    const BRIDGE_PAGE = `${MY_DOMAIN}/naver.html`;
     const TARGET_RSS_URL = `https://rss.blog.naver.com/${NAVER_ID}.xml`;
 
     try {
@@ -30,13 +30,17 @@ app.get('/naver/rss', async (req, res) => {
 
         let xmlData = await response.text();
 
-        // 기존 네이버 주소를 추출해서 우리 도메인의 naver.html 주소로 교체
+        // [해결 핵심] 
+        // 1. 개별 포스팅 주소 변환 (logNo가 있는 경우)
         const postUrlRegex = new RegExp(`https://blog\\.naver\\.com/${NAVER_ID}/([0-9]+)`, 'g');
-
         xmlData = xmlData.replace(postUrlRegex, (match, logNo) => {
-            // 결과 예시: https://coinpop.vercel.app/naver.html?logNo=12345
-            return `${BRIDGE_URL}${logNo}`;
+            return `${BRIDGE_PAGE}?logNo=${logNo}`;
         });
+
+        // 2. 메인 블로그 주소 및 기타 네이버 주소 전부 변환 (에러 원인 제거)
+        // 위에서 처리 안 된 나머지 https://blog.naver.com/아이디... 형태를 모두 naver.html로 보냄
+        const remainUrlRegex = new RegExp(`https://blog\\.naver\\.com/${NAVER_ID}[^<\\s"']*`, 'g');
+        xmlData = xmlData.replace(remainUrlRegex, BRIDGE_PAGE);
 
         res.set('Content-Type', 'application/xml; charset=utf-8');
         res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
