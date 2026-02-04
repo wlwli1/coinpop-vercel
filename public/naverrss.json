@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/naverrss",
+      "destination": "https://rss.blog.naver.com/kj1nhon9o114.xml"
+    }
+  ]
+}
