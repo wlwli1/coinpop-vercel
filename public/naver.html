@@ -179,7 +179,8 @@
     // 블로그 주소 (에러 시 이동용)
     const mobileBlogUrl = `https://m.blog.naver.com/${blogId}`;
     
-    const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}`;
+    // API 주소 수정: &count=25 추가하여 최대 25개 글 불러오기
+    const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}&count=25`;
 
     fetch(apiUrl)
         .then(response => response.json())
