@@ -170,17 +170,20 @@
 </div>
 
 <script>
-    // 설정: 블로그 아이디
+    // 1. 설정: 블로그 아이디 및 API 키
     const blogId = 'kj1nhon9o114';
+    const apiKey = 'bqdrrodbjxkfxqsd0da9w66ajjpxnrtwty1pdkvx'; // 사용자 제공 API Key
     
-    // RSS 주소 (데이터 수신용)
+    // 2. RSS 주소 (데이터 수신용)
     const rssUrl = `https://rss.blog.naver.com/${blogId}.xml`;
     
-    // 블로그 주소 (에러 시 이동용)
+    // 3. 블로그 주소 (에러 시 이동용)
     const mobileBlogUrl = `https://m.blog.naver.com/${blogId}`;
     
-    // API 주소 수정: &count=25 추가하여 최대 25개 글 불러오기
-    const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}&count=25`;
+    // 4. API 주소 생성
+    // - api_key: 인증 키 추가
+    // - count: 네이버 RSS 최대 지원 개수인 50으로 설정 (키가 있어 안정적)
+    const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}&api_key=${apiKey}&count=50`;
 
     fetch(apiUrl)
         .then(response => response.json())
