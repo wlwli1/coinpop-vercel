@@ -34,8 +34,8 @@ app.get('/coinpoptalk', async (req, res) => {
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>CoinPopBit Talk - 최신 토론</title>
-                <meta name="description" content="CoinPopBit 커뮤니티의 최신 암호화폐 토론 글 모음">
+                <title>코인팝톡 CoinPop Talk - 최신 토론</title>
+                <meta name="description" content="코인팝톡 커뮤니티의 최신 암호화폐 토론 글 모음">
                 <meta name="robots" content="index, follow">
                 <link rel="canonical" href="https://talk.coinpopbit.com">
                 <style>
@@ -59,7 +59,7 @@ app.get('/coinpoptalk', async (req, res) => {
             <body>
                 <div class="container">
                     <header>
-                        <h1>CoinPopBit Talk</h1>
+                        <h1>코인팝톡 coinpopTalk</h1>
                         <p class="subtitle">Latest Discussions & News</p>
                     </header>
                     <ul class="post-list">
@@ -90,7 +90,7 @@ app.get('/coinpoptalk', async (req, res) => {
         html += `
                     </ul>
                     <footer>
-                        <p>Curated by CoinPopBit</p>
+                        <p>Curated by 코인팝톡</p>
                         <a href="https://talk.coinpopbit.com" target="_blank" class="btn-home">커뮤니티 바로가기</a>
                     </footer>
                 </div>
