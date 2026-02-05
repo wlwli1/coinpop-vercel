@@ -313,6 +313,122 @@ app.get('/naverblog/rss', async (req, res) => {
 
 
 
+// [RSS] medium 페이지
+
+app.get('/mediumblog', async (req, res) => {
+    const FEED_URL = 'https://medium.com/feed/@winnerss';
+
+    try {
+        const feed = await parser.parseURL(FEED_URL);
+        let html = `
+            <!DOCTYPE html>
+            <html lang="ko">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Medium - 최신 인사이트</title>
+                <meta name="description" content="미디엄 블로그의 최신 암호화폐 및 기술 분석">
+                <style>
+                    body { font-family: 'Georgia', serif; background-color: #fff; margin: 0; padding: 0; color: #292929; }
+                    .container { max-width: 680px; margin: 0 auto; padding: 40px 20px; }
+                    header { margin-bottom: 50px; border-bottom: 1px solid #eee; padding-bottom: 20px; }
+                    h1 { font-size: 32px; font-weight: 700; margin: 0; letter-spacing: -1px; }
+                    .subtitle { font-size: 14px; color: #757575; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px; }
+                    .post-list { list-style: none; padding: 0; }
+                    .post-item { margin-bottom: 48px; }
+                    .post-date { font-size: 13px; color: #757575; margin-bottom: 8px; }
+                    .post-title { font-size: 22px; font-weight: 700; margin: 0 0 10px 0; line-height: 1.3; }
+                    .post-title a { text-decoration: none; color: #292929; }
+                    .post-title a:hover { color: #1a8917; }
+                    .post-desc { font-size: 16px; color: #292929; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+                    footer { margin-top: 80px; border-top: 1px solid #eee; padding-top: 40px; text-align: center; font-size: 14px; color: #757575; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <header>
+                        <h1>Medium Stories</h1>
+                        <p class="subtitle">Latest Insights from @winnerss</p>
+                    </header>
+                    <div class="post-list">
+        `;
+
+        feed.items.forEach(item => {
+            let summary = item.contentSnippet || item.content || '';
+            summary = summary.replace(/<[^>]*>?/gm, ''); 
+            const dateStr = new Date(item.pubDate || item.isoDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+            html += `
+                <article class="post-item">
+                    <div class="post-date">${dateStr}</div>
+                    <h2 class="post-title"><a href="${item.link}" target="_blank">${item.title}</a></h2>
+                    <p class="post-desc">${summary}</p>
+                </article>
+            `;
+        });
+
+        html += `
+                    </div>
+                    <footer>
+                        <p>Powered by CoinPopBit Hub</p>
+                    </footer>
+                </div>
+            </body>
+            </html>
+        `;
+        res.set('Content-Type', 'text/html; charset=utf-8');
+        res.send(html);
+    } catch (error) {
+        res.status(500).send('Medium Feed Error');
+    }
+});
+
+
+
+// [RSS] medium rss
+
+app.get('/medium/rss', async (req, res) => {
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers.host;
+    const MY_DOMAIN = `${protocol}://${host}`;
+    const WRAPPER = `${MY_DOMAIN}/go?url=`;
+    const FEED_URL = 'https://medium.com/feed/@winnerss';
+
+    try {
+        res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate');
+        const response = await fetch(FEED_URL);
+        let xmlData = await response.text();
+
+        // 링크 및 식별자 치환 (GSC 오류 방지)
+        xmlData = xmlData.replace(
+            /((?:<link>|<guid[^>]*>))(?:\s*<!\[CDATA\[)?\s*(https:\/\/medium\.com\/[^<\]]+)(?:\]\]>)?\s*(?=<\/(?:link|guid)>)/g,
+            (match, tag, url) => {
+                if (url.includes(MY_DOMAIN)) return match;
+                return `${tag}${WRAPPER}${encodeURIComponent(url)}`;
+            }
+        );
+
+        res.set('Content-Type', 'application/xml; charset=utf-8');
+        res.send(xmlData);
+    } catch (error) {
+        res.status(500).send('Medium RSS Error');
+    }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // =========================================================
 // [기존] 네이버 RSS 처리
 // =========================================================
