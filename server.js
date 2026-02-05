@@ -1,26 +1,116 @@
 const express = require('express');
 const path = require('path');
+const Parser = require('rss-parser'); // [추가됨] RSS 해석기
 const app = express();
+const parser = new Parser(); // [추가됨] 파서 초기화
 
 const NAVER_ID = 'kj1nhon9o114';
 
 // 1. HTML 파일 보여주기
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 2. 리다이렉트 중계소 (/go) -> RSS에서 안 쓰지만, 혹시 다른 곳에 쓸 수 있어 남겨둠
+// 2. 리다이렉트 중계소 (/go)
 app.get('/go', (req, res) => {
     const destination = req.query.url;
     if (!destination) return res.redirect('/');
     res.redirect(301, destination);
 });
 
+// =========================================================
+// [신규] CoinPop Talk (SEO 최적화 HTML 페이지)
+// 주소: /coinpoptalk
+// =========================================================
+app.get('/coinpoptalk', async (req, res) => {
+    const FEED_URL = 'https://talk.coinpopbit.com/public/atom';
+
+    try {
+        // 1. Atom 피드 데이터 가져오기 (서버에서 실행)
+        const feed = await parser.parseURL(FEED_URL);
+
+        // 2. HTML 머리말 (SEO 메타태그 포함)
+        let html = `
+            <!DOCTYPE html>
+            <html lang="ko">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>CoinPopBit Talk - 최신 토론</title>
+                <meta name="description" content="CoinPopBit 커뮤니티의 최신 암호화폐 토론 글 모음">
+                <meta name="robots" content="index, follow">
+                <link rel="canonical" href="https://talk.coinpopbit.com">
+                <style>
+                    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: #f8f9fa; margin: 0; padding: 0; color: #333; }
+                    .container { max-width: 720px; margin: 0 auto; background: #fff; min-height: 100vh; box-shadow: 0 0 10px rgba(0,0,0,0.05); }
+                    header { background-color: #fff; padding: 20px; border-bottom: 1px solid #eee; text-align: center; position: sticky; top: 0; }
+                    h1 { font-size: 20px; margin: 0; font-weight: 700; color: #111; }
+                    .subtitle { font-size: 12px; color: #888; margin-top: 5px; }
+                    .post-list { list-style: none; padding: 0; margin: 0; }
+                    .post-item { border-bottom: 1px solid #f1f1f1; padding: 20px; transition: background 0.2s; }
+                    .post-item:hover { background-color: #fafafa; }
+                    .post-date { font-size: 12px; color: #999; margin-bottom: 6px; }
+                    .post-title { font-size: 17px; margin: 0 0 8px 0; line-height: 1.4; font-weight: 600; }
+                    .post-title a { text-decoration: none; color: #222; display: block; }
+                    .post-title a:hover { color: #0070f3; }
+                    .post-desc { font-size: 14px; color: #555; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 0; }
+                    footer { padding: 30px; text-align: center; font-size: 12px; color: #aaa; background: #f8f9fa; }
+                    .btn-home { display: inline-block; margin-top: 15px; padding: 8px 16px; background: #222; color: #fff; text-decoration: none; border-radius: 4px; font-size: 13px; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <header>
+                        <h1>CoinPopBit Talk</h1>
+                        <p class="subtitle">Latest Discussions & News</p>
+                    </header>
+                    <ul class="post-list">
+        `;
+
+        // 3. 게시글 목록 생성 (리다이렉트 없이 원본 링크 사용)
+        feed.items.forEach(item => {
+            // 요약문 텍스트만 추출 및 길이 제한
+            let summary = item.contentSnippet || item.content || '';
+            summary = summary.replace(/<[^>]*>?/gm, ''); 
+            if (summary.length > 120) summary = summary.substring(0, 120) + '...';
+            
+            // 날짜 포맷
+            const dateStr = new Date(item.pubDate || item.isoDate).toLocaleDateString('ko-KR');
+
+            html += `
+                <li class="post-item">
+                    <div class="post-date">${dateStr}</div>
+                    <h2 class="post-title">
+                        <a href="${item.link}" target="_blank">${item.title}</a>
+                    </h2>
+                    <p class="post-desc">${summary}</p>
+                </li>
+            `;
+        });
+
+        // 4. HTML 꼬리말
+        html += `
+                    </ul>
+                    <footer>
+                        <p>Curated by CoinPopBit</p>
+                        <a href="https://talk.coinpopbit.com" target="_blank" class="btn-home">커뮤니티 바로가기</a>
+                    </footer>
+                </div>
+            </body>
+            </html>
+        `;
+
+        res.set('Content-Type', 'text/html; charset=utf-8');
+        res.send(html);
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).send('<h3>Feed Load Error</h3><p>잠시 후 다시 시도해주세요.</p>');
+    }
+});
 
 
-
-
-
-
-
+// =========================================================
+// [기존] 네이버 RSS 처리
+// =========================================================
 app.get('/naver/rss', async (req, res) => {
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const host = req.headers.host;
@@ -35,19 +125,12 @@ app.get('/naver/rss', async (req, res) => {
 
         let xmlData = await response.text();
 
-        // [방법 1] 상세 포스트 주소 치환 (가장 안전한 방식)
-        // https://blog.naver.com/아이디/숫자 -> naver.html?logNo=숫자
         const postUrlPattern = `https://blog.naver.com/${NAVER_ID}/`;
         xmlData = xmlData.split(postUrlPattern).join(`${BRIDGE_PAGE}?logNo=`);
 
-        // [방법 2] 메인 블로그 주소 및 기타 주소 치환
-        // 포스트 번호가 없는 나머지 네이버 주소들을 BRIDGE_PAGE로 바꿈
         const mainUrlPattern = `https://blog.naver.com/${NAVER_ID}`;
         xmlData = xmlData.split(mainUrlPattern).join(BRIDGE_PAGE);
 
-        // [방법 3] XML 문법 에러의 주범인 '&' 기호 처리
-        // URL 파라미터에 포함된 &가 &amp;가 아니면 XML은 터집니다.
-        // 이미 &amp;인 것은 건드리지 않고, 단독 &만 변환합니다.
         xmlData = xmlData.replace(/&(?!(amp|lt|gt|quot|apos);)/g, '&amp;');
 
         res.set('Content-Type', 'application/xml; charset=utf-8');
@@ -60,17 +143,10 @@ app.get('/naver/rss', async (req, res) => {
     }
 });
 
-
-
-
-
-
-
 // =========================================================
-// [서브스택 RSS] Prolog 에러 방지 & 링크 변환 적용 완료
+// [기존] 서브스택 RSS 처리
 // =========================================================
 app.get('/substack/rss', async (req, res) => {
-    // 님 서브스택 아이디 (주소 맨 뒤 @coinpop 부분에서 @ 뺀 것)
     const SUBSTACK_USER = 'coinpop'; 
     const TARGET_RSS_URL = `https://${SUBSTACK_USER}.substack.com/feed`;
 
@@ -80,12 +156,10 @@ app.get('/substack/rss', async (req, res) => {
     const WRAPPER = `${MY_DOMAIN}/go?url=`;
 
     try {
-        // 1. 캐시 방지 (에러 화면 기억 삭제)
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
 
-        // 2. RSS 데이터 가져오기
         const response = await fetch(TARGET_RSS_URL, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
@@ -95,35 +169,26 @@ app.get('/substack/rss', async (req, res) => {
         if (!response.ok) throw new Error(`Substack Error: ${response.status}`);
 
         let xmlData = await response.text();
-
-        // =========================================================
-        // [핵심] XML 선언부(<?xml...?>) 및 앞부분 공백 제거
-        // 서브스택도 <rss> 태그를 사용하므로 <rss 찾아서 앞부분 다 자름
-        // =========================================================
         const rssStartIndex = xmlData.indexOf('<rss');
         
         if (rssStartIndex === -1) {
-             console.error('No <rss> tag found in Substack response.');
+             console.error('No <rss> tag found');
              res.set('Content-Type', 'text/plain');
-             return res.send('[Error] Substack이 RSS XML을 주지 않았습니다.');
+             return res.send('[Error] Substack RSS Fail');
         }
 
-  xmlData = xmlData.trim(); // 공백만 제거
-        // [추가 추천] 혹시나 Substack이 <?xml 선언을 안 줬을 때를 대비한 안전장치
-if (!xmlData.startsWith('<?xml')) {
-    xmlData = '<?xml version="1.0" encoding="UTF-8"?>\n' + xmlData;
-}
+        xmlData = xmlData.substring(rssStartIndex).trim();
+        if (!xmlData.startsWith('<?xml')) {
+            xmlData = '<?xml version="1.0" encoding="UTF-8"?>\n' + xmlData;
+        }
 
-        // 3. 기존 껍데기(WRAPPER) 중복 방지 청소
         while (xmlData.includes(WRAPPER)) {
             xmlData = xmlData.replaceAll(WRAPPER, '');
         }
 
-        // 4. <link> 태그 주소 포장 (내 사이트 거쳐가게 만들기)
         xmlData = xmlData.replace(
             /(<link>)(.*?)(<\/link>)/g, 
             (match, p1, p2, p3) => {
-                // 서브스택 링크이면서, 내 도메인이 아직 안 붙은 것만 처리
                 if (p2.includes('substack.com') && !p2.includes(MY_DOMAIN)) {
                     return `${p1}${WRAPPER}${p2}${p3}`;
                 }
@@ -131,7 +196,6 @@ if (!xmlData.startsWith('<?xml')) {
             }
         );
 
-        // 5. 응답 전송
         res.set('Content-Type', 'application/xml; charset=utf-8');
         res.status(200).send(xmlData);
 
@@ -142,36 +206,7 @@ if (!xmlData.startsWith('<?xml')) {
     }
 });
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// [중요] Vercel은 이 부분을 봅니다.
+// 서버 실행
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
