@@ -236,11 +236,19 @@ app.get('/coinpoptalk/rss', async (req, res) => {
 });
 
 // =========================================================
-// [RSS] Naver Blog RSS 중계 (안전 모드)
+// [RSS] Naver Blog RSS 중계 (구글 콘솔 오류 해결판)
 // 주소: /naverblog/rss
 // =========================================================
 app.get('/naverblog/rss', async (req, res) => {
-    // 상단에 선언된 NAVER_ID 사용 ('kj1nhon9o114')
+    // 1. 내 도메인 주소 파악 (http vs https 자동 감지)
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers.host;
+    const MY_DOMAIN = `${protocol}://${host}`;
+    
+    // 2. 링크 포장지 주소 (/go?url=...)
+    const WRAPPER = `${MY_DOMAIN}/go?url=`;
+
+    // 상단에 선언된 NAVER_ID 사용
     const FEED_URL = `https://rss.blog.naver.com/${NAVER_ID}.xml`;
 
     try {
@@ -251,8 +259,23 @@ app.get('/naverblog/rss', async (req, res) => {
 
         let xmlData = await response.text();
 
-        // [중요] 네이버 RSS의 고질적인 XML 문법 오류 수정
-        // URL 파라미터 내의 앰퍼샌드(&)가 이스케이프 되지 않은 경우 수정
+        // [핵심 1] 네이버 도메인 링크를 -> 내 도메인 링크로 치환
+        // 예: <link>https://blog.naver.com/...</link> 
+        // -> <link>https://내도메인/go?url=https://blog.naver.com/...</link>
+        
+        // 정규식 설명: <link> 태그나 <guid> 태그 안의 네이버 주소를 찾음
+        xmlData = xmlData.replace(
+            /((?:<link>|<guid>|<guid isPermaLink="true">))(?:\s*<!\[CDATA\[)?\s*(https:\/\/blog\.naver\.com\/[^<\]]+)(?:\]\]>)?\s*(?=<\/(?:link|guid)>)/g,
+            (match, tag, url) => {
+                // 이미 변환된 게 아닐 때만 변환
+                if (url.includes(MY_DOMAIN)) return match;
+                return `${tag}${WRAPPER}${url}`;
+            }
+        );
+
+        // [핵심 2] XML 문법 에러 수정 (& 기호 처리)
+        // 네이버가 trackingCode=rss 같은 파라미터를 붙일 때 &를 그냥 써서 에러가 남.
+        // 이를 &amp; 로 바꿔줘야 구글이 읽을 수 있음.
         xmlData = xmlData.replace(/&(?!(amp|lt|gt|quot|apos);)/g, '&amp;');
 
         res.set('Content-Type', 'application/xml; charset=utf-8');
