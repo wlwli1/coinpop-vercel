@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>코인팝톡 - Feed</title>
+    <meta name="description" content="코인팝톡 최신 글 모음 페이지입니다.">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --brand-color: #3b82f6; /* 브랜드 컬러 변경 (파란색 계열 예시) */
+            --bg-color: #F5F6F8;
+            --text-main: #222;
+            --text-sub: #888;
+        }
+
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 720px;
+            margin: 0 auto;
+            background: #fff;
+            min-height: 100vh;
+            box-shadow: 0 0 20px rgba(0,0,0,0.03);
+        }
+
+        header {
+            padding: 30px 24px;
+            border-bottom: 1px solid #eee;
+            text-align: center;
+        }
+
+        .badge {
+            display: inline-block;
+            background: var(--brand-color);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 8px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 700;
+            margin: 0 0 5px 0;
+            letter-spacing: -0.5px;
+        }
+        
+        p.subtitle {
+            font-size: 14px;
+            color: var(--text-sub);
+            margin: 0;
+        }
+
+        #feed-list {
+            padding: 0;
+        }
+
+        .post-item {
+            padding: 24px;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            transition: background 0.2s;
+        }
+        .post-item:hover { background-color: #fafafa; }
+
+        .post-date {
+            font-size: 12px;
+            color: var(--text-sub);
+        }
+
+        .post-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin: 0;
+            line-height: 1.4;
+        }
+        .post-title a { text-decoration: none; color: #222; }
+        .post-title a:hover { text-decoration: underline; color: var(--brand-color); }
+
+        .post-desc {
+            font-size: 14px;
+            color: #555;
+            line-height: 1.6;
+            margin: 0;
+            display: -webkit-box;
+            -webkit-line-clamp: 3; /* Atom 피드는 본문이 길 수 있어 3줄로 조정 */
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .post-thumb {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin-top: 10px;
+            background-color: #eee;
+            display: none;
+        }
+        .post-thumb.show { display: block; }
+
+        .btn-read-more {
+            display: inline-block;
+            margin-top: 10px;
+            font-size: 13px;
+            color: var(--brand-color);
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        #loading { text-align: center; padding: 50px; color: #999; font-size: 14px; }
+        
+        footer {
+            padding: 40px;
+            text-align: center;
+            font-size: 12px;
+            color: #aaa;
+            background-color: #f9f9f9;
+            border-top: 1px solid #eee;
+        }
+        footer span { color: #999; font-weight: 500; }
+
+        .error-box {
+            text-align: center;
+            padding: 40px 20px;
+        }
+        .btn-retry {
+            background: var(--brand-color);
+            color: #fff;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 20px;
+            font-size: 14px;
+            display: inline-block;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <span class="badge">FEED</span>
+        <h1>CoinPopBit Talk</h1>
+        <p class="subtitle">Latest Updates & Discussions</p>
+    </header>
+
+    <div id="feed-list">
+        <div id="loading">피드를 불러오는 중...</div>
+    </div>
+
+    <footer>
+        <p>Curated by <span>코인팝톡</span></p>
+    </footer>
+</div>
+
+<script>
+    // 1. 설정: Atom 피드 주소 및 API 키
+    // 주의: 기존 API 키를 그대로 사용하거나, rss2json.com에서 새 키를 발급받아 교체하세요.
+    const feedUrl = 'https://talk.coinpopbit.com/public/atom';
+    const apiKey = 'bqdrrodbjxkfxqsd0da9w66ajjpxnrtwty1pdkvx'; // 기존 키 유지 (필요시 변경)
+    
+    // 2. API 주소 생성
+    const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedUrl)}&api_key=${apiKey}&count=50`;
+
+    fetch(apiUrl)
+        .then(response => response.json())
+        .then(data => {
+            const container = document.getElementById('feed-list');
+            
+            if (data.status !== 'ok') {
+                throw new Error('Feed Load Failed');
+            }
+
+            const items = data.items;
+            let html = '';
+
+            if (items.length > 0) {
+                items.forEach(item => {
+                    // 날짜 포맷팅
+                    const date = new Date(item.pubDate).toLocaleDateString('ko-KR', {
+                        year: 'numeric', month: '2-digit', day: '2-digit',
+                        hour: '2-digit', minute: '2-digit'
+                    });
+
+                    // 본문 미리보기 정리 (HTML 태그 제거)
+                    // Atom 피드는 description 대신 content 필드에 내용이 있을 수 있으나 rss2json이 매핑해줍니다.
+                    let content = item.description || item.content || '';
+                    let cleanDesc = content.replace(/<[^>]*>?/gm, '');
+                    if (cleanDesc.length > 150) cleanDesc = cleanDesc.substring(0, 150) + '...';
+
+                    // 썸네일 추출 (description 내 이미지 또는 enclosure)
+                    let imgUrl = item.thumbnail;
+                    if (!imgUrl) {
+                        const imgMatch = content.match(/<img[^>]+src="([^">]+)"/);
+                        if (imgMatch && imgMatch[1]) imgUrl = imgMatch[1];
+                    }
+
+                    let imgHtml = '';
+                    if (imgUrl) {
+                        imgHtml = `<a href="${item.link}" target="_blank"><img src="${imgUrl}" class="post-thumb show" loading="lazy" alt="썸네일"></a>`;
+                    }
+
+                    html += `
+                        <article class="post-item">
+                            <span class="post-date">${date}</span>
+                            <h2 class="post-title"><a href="${item.link}" target="_blank">${item.title}</a></h2>
+                            ${imgHtml}
+                            <p class="post-desc">${cleanDesc}</p>
+                            <a href="${item.link}" target="_blank" class="btn-read-more">계속 읽기 →</a>
+                        </article>
+                    `;
+                });
+                container.innerHTML = html;
+            } else {
+                container.innerHTML = '<p style="text-align:center; padding:40px;">게시글이 없습니다.</p>';
+            }
+        })
+        .catch(error => {
+            console.error(error);
+            document.getElementById('feed-list').innerHTML = `
+                <div class="error-box">
+                    <p>피드를 불러오지 못했습니다.</p>
+                    <a href="${feedUrl}" target="_blank" class="btn-retry">피드 원문 보기</a>
+                </div>
+            `;
+        });
+</script>
+
+</body>
+</html>
