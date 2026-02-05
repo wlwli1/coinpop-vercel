@@ -387,7 +387,7 @@ app.get('/mediumblog', async (req, res) => {
 
 // [RSS] medium rss
 
-app.get('/medium/rss', async (req, res) => {
+app.get('/mediumblog/rss', async (req, res) => {
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const host = req.headers.host;
     const MY_DOMAIN = `${protocol}://${host}`;
