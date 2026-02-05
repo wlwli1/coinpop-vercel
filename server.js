@@ -108,6 +108,99 @@ app.get('/coinpoptalk', async (req, res) => {
 });
 
 
+
+
+// =========================================================
+// [신규] Naver Blog List (SEO 최적화 HTML 페이지)
+// 주소: /naverblog
+// =========================================================
+app.get('/naverblog', async (req, res) => {
+    // 상단에 정의된 NAVER_ID 변수 사용
+    const FEED_URL = `https://rss.blog.naver.com/${NAVER_ID}.xml`;
+
+    try {
+        const feed = await parser.parseURL(FEED_URL);
+
+        // 네이버 브랜드 컬러(초록색) 적용
+        let html = `
+            <!DOCTYPE html>
+            <html lang="ko">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>위너위너 투자 기록 - 네이버 블로그</title>
+                <meta name="description" content="위너위너의 네이버 블로그 최신 글 모음">
+                <meta name="robots" content="index, follow">
+                <link rel="canonical" href="https://blog.naver.com/${NAVER_ID}">
+                <style>
+                    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: #f5f6f8; margin: 0; padding: 0; color: #333; }
+                    .container { max-width: 720px; margin: 0 auto; background: #fff; min-height: 100vh; box-shadow: 0 0 10px rgba(0,0,0,0.05); }
+                    header { background-color: #fff; padding: 25px 20px; border-bottom: 1px solid #eee; text-align: center; }
+                    .badge { display: inline-block; background: #03C75A; color: #fff; font-size: 11px; font-weight: 700; padding: 3px 6px; border-radius: 4px; margin-bottom: 8px; }
+                    h1 { font-size: 22px; margin: 0; font-weight: 700; color: #111; letter-spacing: -0.5px; }
+                    .subtitle { font-size: 13px; color: #888; margin-top: 5px; }
+                    .post-list { list-style: none; padding: 0; margin: 0; }
+                    .post-item { border-bottom: 1px solid #f1f1f1; padding: 24px 20px; transition: background 0.2s; }
+                    .post-item:hover { background-color: #fafafa; }
+                    .post-date { font-size: 12px; color: #999; margin-bottom: 8px; }
+                    .post-title { font-size: 18px; margin: 0 0 10px 0; line-height: 1.4; font-weight: 600; }
+                    .post-title a { text-decoration: none; color: #222; display: block; }
+                    .post-title a:hover { color: #03C75A; text-decoration: underline; }
+                    .post-desc { font-size: 14px; color: #555; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 0; }
+                    footer { padding: 30px; text-align: center; font-size: 12px; color: #aaa; background: #f8f9fa; border-top: 1px solid #eee; }
+                    .btn-naver { display: inline-block; margin-top: 15px; padding: 8px 16px; background: #03C75A; color: #fff; text-decoration: none; border-radius: 4px; font-size: 13px; font-weight: bold; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <header>
+                        <span class="badge">NAVER BLOG</span>
+                        <h1>위너위너</h1>
+                        <p class="subtitle">경제적 자유를 위한 투자 기록</p>
+                    </header>
+                    <ul class="post-list">
+        `;
+
+        feed.items.forEach(item => {
+            // 요약문 텍스트만 추출 (네이버는 이미지 태그가 많으므로 제거 필수)
+            let summary = item.contentSnippet || item.content || '';
+            summary = summary.replace(/<[^>]*>?/gm, ''); 
+            if (summary.length > 120) summary = summary.substring(0, 120) + '...';
+            
+            const dateStr = new Date(item.pubDate || item.isoDate).toLocaleDateString('ko-KR');
+
+            html += `
+                <li class="post-item">
+                    <div class="post-date">${dateStr}</div>
+                    <h2 class="post-title">
+                        <a href="${item.link}" target="_blank">${item.title}</a>
+                    </h2>
+                    <p class="post-desc">${summary}</p>
+                </li>
+            `;
+        });
+
+        html += `
+                    </ul>
+                    <footer>
+                        <p>Curated by 위너위너</p>
+                        <a href="https://blog.naver.com/${NAVER_ID}" target="_blank" class="btn-naver">네이버 블로그 홈으로</a>
+                    </footer>
+                </div>
+            </body>
+            </html>
+        `;
+
+        res.set('Content-Type', 'text/html; charset=utf-8');
+        res.send(html);
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).send('<h3>Naver Blog Feed Error</h3><p>잠시 후 다시 시도해주세요.</p>');
+    }
+});
+
+
 // =========================================================
 // [기존] 네이버 RSS 처리
 // =========================================================
