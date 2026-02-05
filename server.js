@@ -201,6 +201,74 @@ app.get('/naverblog', async (req, res) => {
 });
 
 
+
+// =========================================================
+// [RSS] CoinPopTalk Atom Feed 중계
+// 주소: /coinpoptalk/rss
+// =========================================================
+app.get('/coinpoptalk/rss', async (req, res) => {
+    const FEED_URL = 'https://talk.coinpopbit.com/public/atom';
+
+    try {
+        // 1. 서버 부하 방지를 위한 캐시 설정 (10분간 저장)
+        res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate');
+
+        // 2. 원본 피드 가져오기
+        const response = await fetch(FEED_URL, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (compatible; CoinPopBot/1.0; +http://coinpopbit.com)'
+            }
+        });
+
+        if (!response.ok) throw new Error(`Feed Fetch Failed: ${response.status}`);
+
+        // 3. 텍스트로 변환
+        let xmlData = await response.text();
+
+        // 4. XML 데이터 전송
+        res.set('Content-Type', 'application/xml; charset=utf-8');
+        res.send(xmlData);
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).send('Error fetching CoinPopTalk Feed');
+    }
+});
+
+// =========================================================
+// [RSS] Naver Blog RSS 중계 (안전 모드)
+// 주소: /naverblog/rss
+// =========================================================
+app.get('/naverblog/rss', async (req, res) => {
+    // 상단에 선언된 NAVER_ID 사용 ('kj1nhon9o114')
+    const FEED_URL = `https://rss.blog.naver.com/${NAVER_ID}.xml`;
+
+    try {
+        res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate');
+
+        const response = await fetch(FEED_URL);
+        if (!response.ok) throw new Error(`Naver RSS Fetch Failed: ${response.status}`);
+
+        let xmlData = await response.text();
+
+        // [중요] 네이버 RSS의 고질적인 XML 문법 오류 수정
+        // URL 파라미터 내의 앰퍼샌드(&)가 이스케이프 되지 않은 경우 수정
+        xmlData = xmlData.replace(/&(?!(amp|lt|gt|quot|apos);)/g, '&amp;');
+
+        res.set('Content-Type', 'application/xml; charset=utf-8');
+        res.send(xmlData);
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).send('Error fetching Naver RSS');
+    }
+});
+
+
+
+
+
+
 // =========================================================
 // [기존] 네이버 RSS 처리
 // =========================================================
