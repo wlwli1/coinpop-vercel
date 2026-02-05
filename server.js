@@ -203,29 +203,50 @@ app.get('/naverblog', async (req, res) => {
 
 
 // =========================================================
-// [RSS] CoinPopTalk Atom Feed 중계
+// [RSS] CoinPopTalk Atom Feed 중계 (구글 콘솔 최적화)
 // 주소: /coinpoptalk/rss
 // =========================================================
 app.get('/coinpoptalk/rss', async (req, res) => {
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers.host;
+    const MY_DOMAIN = `${protocol}://${host}`;
+    const WRAPPER = `${MY_DOMAIN}/go?url=`;
+
     const FEED_URL = 'https://talk.coinpopbit.com/public/atom';
 
     try {
-        // 1. 서버 부하 방지를 위한 캐시 설정 (10분간 저장)
         res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate');
 
-        // 2. 원본 피드 가져오기
         const response = await fetch(FEED_URL, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (compatible; CoinPopBot/1.0; +http://coinpopbit.com)'
+                'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
             }
         });
 
         if (!response.ok) throw new Error(`Feed Fetch Failed: ${response.status}`);
 
-        // 3. 텍스트로 변환
         let xmlData = await response.text();
 
-        // 4. XML 데이터 전송
+        // [핵심 1] <link href="..."> 태그 내 주소 치환
+        // Atom의 link 태그는 href 속성에 주소가 들어있습니다.
+        xmlData = xmlData.replace(
+            /href="(https:\/\/talk\.coinpopbit\.com\/[^"]+)"/g,
+            (match, url) => {
+                if (url.includes(MY_DOMAIN)) return match;
+                return `href="${WRAPPER}${encodeURIComponent(url)}"`;
+            }
+        );
+
+        // [핵심 2] <id>...</id> 태그 내 주소 치환
+        // 구글은 id 태그 내부의 주소도 본인 도메인일 것을 요구하는 경우가 있습니다.
+        xmlData = xmlData.replace(
+            /<id>(https:\/\/talk\.coinpopbit\.com\/[^<]+)<\/id>/g,
+            (match, url) => {
+                if (url.includes(MY_DOMAIN)) return match;
+                return `<id>${WRAPPER}${encodeURIComponent(url)}</id>`;
+            }
+        );
+
         res.set('Content-Type', 'application/xml; charset=utf-8');
         res.send(xmlData);
 
