@@ -385,33 +385,92 @@ app.get('/mediumblog', async (req, res) => {
 
 
 
-// [RSS] medium rss
-
+// =========================================================
+// [RSS] Medium RSS 중계 (차단 우회 + 구글 콘솔 최적화)
+// 주소: /mediumblog/rss
+// =========================================================
 app.get('/mediumblog/rss', async (req, res) => {
+    // 1. 내 도메인 주소 파악
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const host = req.headers.host;
     const MY_DOMAIN = `${protocol}://${host}`;
     const WRAPPER = `${MY_DOMAIN}/go?url=`;
+
     const FEED_URL = 'https://medium.com/feed/@winnerss';
 
     try {
-        res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate');
-        const response = await fetch(FEED_URL);
+        // [중요] 미디엄 차단 방지용 헤더 추가 (마치 크롬 브라우저인 척 위장)
+        const response = await fetch(FEED_URL, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Medium Server Blocked: ${response.status}`);
+        }
+
         let xmlData = await response.text();
 
-        // 링크 및 식별자 치환 (GSC 오류 방지)
+        // 2. XML 공백 제거 (구글이 공백에 민감함)
+        xmlData = xmlData.trim();
+        // 혹시 <?xml ... ?> 선언이 없으면 추가
+        if (!xmlData.startsWith('<?xml')) {
+            xmlData = '<?xml version="1.0" encoding="UTF-8"?>\n' + xmlData;
+        }
+
+        // 3. 링크 래핑 (내 도메인 주소로 포장) - 구글 콘솔 "사용할 수 없는 URL" 해결
+        // <link> 태그 처리
         xmlData = xmlData.replace(
-            /((?:<link>|<guid[^>]*>))(?:\s*<!\[CDATA\[)?\s*(https:\/\/medium\.com\/[^<\]]+)(?:\]\]>)?\s*(?=<\/(?:link|guid)>)/g,
-            (match, tag, url) => {
+            /(<link>)(.*?)(<\/link>)/g,
+            (match, p1, p2, p3) => {
+                const url = p2.replace('<![CDATA[', '').replace(']]>', '').trim();
                 if (url.includes(MY_DOMAIN)) return match;
-                return `${tag}${WRAPPER}${encodeURIComponent(url)}`;
+                return `${p1}${WRAPPER}${encodeURIComponent(url)}${p3}`;
             }
         );
 
+        // <guid> 태그 처리 (미디엄은 guid도 링크로 씀)
+        xmlData = xmlData.replace(
+            /(<guid isPermaLink="true">)(.*?)(<\/guid>)/g,
+            (match, p1, p2, p3) => {
+                const url = p2.replace('<![CDATA[', '').replace(']]>', '').trim();
+                if (url.includes(MY_DOMAIN)) return match;
+                return `${p1}${WRAPPER}${encodeURIComponent(url)}${p3}`;
+            }
+        );
+
+        // <atom:link> 태그 처리 (RSS 자체 주소 래핑)
+        xmlData = xmlData.replace(
+            /<atom:link href="(.*?)"/g,
+            (match, url) => {
+                if (url.includes(MY_DOMAIN)) return match;
+                return `<atom:link href="${WRAPPER}${encodeURIComponent(url)}"`;
+            }
+        );
+
+        // 4. 특수문자 에러 방지 (& -> &amp;)
+        xmlData = xmlData.replace(/&(?!(amp|lt|gt|quot|apos);)/g, '&amp;');
+
+        // 5. 전송
         res.set('Content-Type', 'application/xml; charset=utf-8');
+        res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate');
         res.send(xmlData);
+
     } catch (error) {
-        res.status(500).send('Medium RSS Error');
+        console.error(error);
+        // 에러 발생 시 XML 형식으로 에러 메시지 전송 (구글이 404/500보다는 이걸 더 잘 이해함)
+        res.set('Content-Type', 'application/xml; charset=utf-8');
+        res.status(500).send(`
+            <?xml version="1.0" encoding="UTF-8"?>
+            <rss version="2.0">
+                <channel>
+                    <title>Error</title>
+                    <description>Medium Fetch Error: ${error.message}</description>
+                </channel>
+            </rss>
+        `);
     }
 });
 
