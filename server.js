@@ -203,6 +203,102 @@ app.get('/naverblog', async (req, res) => {
 
 
 // =========================================================
+// [HTML] Substack Blog List (미디엄 스타일 적용)
+// 주소: /substackblog
+// =========================================================
+app.get('/substackblog', async (req, res) => {
+    const SUBSTACK_USER = 'coinpop'; 
+    const FEED_URL = `https://${SUBSTACK_USER}.substack.com/feed`;
+
+    try {
+        // rss-parser를 이용해 피드 가져오기
+        const feed = await parser.parseURL(FEED_URL);
+
+        let html = `
+            <!DOCTYPE html>
+            <html lang="ko">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>CoinPop - Substack Newsletter</title>
+                <meta name="description" content="CoinPop의 서브스택 최신 뉴스레터 모음">
+                <style>
+                    /* 미디엄과 동일한 기본 스타일 */
+                    body { font-family: 'Georgia', serif; background-color: #fff; margin: 0; padding: 0; color: #292929; }
+                    .container { max-width: 680px; margin: 0 auto; padding: 40px 20px; }
+                    header { margin-bottom: 50px; border-bottom: 1px solid #eee; padding-bottom: 20px; }
+                    h1 { font-size: 32px; font-weight: 700; margin: 0; letter-spacing: -1px; }
+                    .subtitle { font-size: 14px; color: #757575; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px; }
+                    
+                    .post-list { list-style: none; padding: 0; }
+                    .post-item { margin-bottom: 48px; }
+                    .post-date { font-size: 13px; color: #757575; margin-bottom: 8px; }
+                    .post-title { font-size: 22px; font-weight: 700; margin: 0 0 10px 0; line-height: 1.3; }
+                    .post-title a { text-decoration: none; color: #292929; }
+                    
+                    /* 서브스택 브랜드 컬러(오렌지) 적용 */
+                    .post-title a:hover { color: #FF6719; }
+                    
+                    .post-desc { font-size: 16px; color: #292929; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+                    footer { margin-top: 80px; border-top: 1px solid #eee; padding-top: 40px; text-align: center; font-size: 14px; color: #757575; }
+                    .btn-home { display: inline-block; margin-top: 10px; color: #FF6719; text-decoration: none; font-weight: bold; font-size: 13px; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <header>
+                        <h1>CoinPop Substack</h1>
+                        <p class="subtitle">Latest Newsletters from @${SUBSTACK_USER}</p>
+                    </header>
+                    <div class="post-list">
+        `;
+
+        feed.items.forEach(item => {
+            // 요약문 태그 제거 및 정리
+            let summary = item.contentSnippet || item.content || '';
+            summary = summary.replace(/<[^>]*>?/gm, ''); 
+            
+            // 날짜 포맷 (미디엄 스타일과 통일: 영어식 표기)
+            const dateStr = new Date(item.pubDate || item.isoDate).toLocaleDateString('en-US', { 
+                year: 'numeric', month: 'long', day: 'numeric' 
+            });
+
+            html += `
+                <article class="post-item">
+                    <div class="post-date">${dateStr}</div>
+                    <h2 class="post-title"><a href="${item.link}" target="_blank">${item.title}</a></h2>
+                    <p class="post-desc">${summary}</p>
+                </article>
+            `;
+        });
+
+        html += `
+                    </div>
+                    <footer>
+                        <p>Powered by CoinPopBit Hub</p>
+                        <a href="https://${SUBSTACK_USER}.substack.com" target="_blank" class="btn-home">Visit Original Substack →</a>
+                    </footer>
+                </div>
+            </body>
+            </html>
+        `;
+
+        res.set('Content-Type', 'text/html; charset=utf-8');
+        res.send(html);
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).send('Substack Feed Error: 잠시 후 다시 시도해주세요.');
+    }
+});
+
+
+
+
+
+
+
+// =========================================================
 // [RSS] CoinPopTalk Atom Feed 중계 (구글 콘솔 최적화)
 // 주소: /coinpoptalk/rss
 // =========================================================
