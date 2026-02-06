@@ -489,41 +489,6 @@ app.get('/mediumblog/rss', async (req, res) => {
 
 
 // =========================================================
-// [기존] 네이버 RSS 처리
-// =========================================================
-app.get('/naver/rss', async (req, res) => {
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers.host;
-    const MY_DOMAIN = `${protocol}://${host}`;
-    
-    const BRIDGE_PAGE = `${MY_DOMAIN}/naver.html`;
-    const TARGET_RSS_URL = `https://rss.blog.naver.com/${NAVER_ID}.xml`;
-
-    try {
-        const response = await fetch(TARGET_RSS_URL);
-        if (!response.ok) throw new Error('RSS Fetch Failed');
-
-        let xmlData = await response.text();
-
-        const postUrlPattern = `https://blog.naver.com/${NAVER_ID}/`;
-        xmlData = xmlData.split(postUrlPattern).join(`${BRIDGE_PAGE}?logNo=`);
-
-        const mainUrlPattern = `https://blog.naver.com/${NAVER_ID}`;
-        xmlData = xmlData.split(mainUrlPattern).join(BRIDGE_PAGE);
-
-        xmlData = xmlData.replace(/&(?!(amp|lt|gt|quot|apos);)/g, '&amp;');
-
-        res.set('Content-Type', 'application/xml; charset=utf-8');
-        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.send(xmlData);
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).send('RSS Error');
-    }
-});
-
-// =========================================================
 // [기존] 서브스택 RSS 처리
 // =========================================================
 app.get('/substack/rss', async (req, res) => {
@@ -585,6 +550,9 @@ app.get('/substack/rss', async (req, res) => {
         res.status(500).send(`Substack Server Error: ${error.message}`);
     }
 });
+
+
+
 
 // 서버 실행
 const PORT = process.env.PORT || 3000;
