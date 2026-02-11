@@ -209,59 +209,6 @@ app.get('/substackblog', async (req, res) => {
 
 
 
-// =========================================================
-// [RSS] CoinPopTalk Atom Feed 중계 (구글 콘솔 최적화)
-// 주소: /coinpoptalk/rss
-// =========================================================
-app.get('/coinpoptalk/rss', async (req, res) => {
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers.host;
-    const MY_DOMAIN = `${protocol}://${host}`;
-    const WRAPPER = `${MY_DOMAIN}/go?url=`;
-
-    const FEED_URL = 'https://talk.coinpopbit.com/public/atom';
-
-    try {
-        res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate');
-
-        const response = await fetch(FEED_URL, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
-            }
-        });
-
-        if (!response.ok) throw new Error(`Feed Fetch Failed: ${response.status}`);
-
-        let xmlData = await response.text();
-
-        // [핵심 1] <link href="..."> 태그 내 주소 치환
-        // Atom의 link 태그는 href 속성에 주소가 들어있습니다.
-        xmlData = xmlData.replace(
-            /href="(https:\/\/talk\.coinpopbit\.com\/[^"]+)"/g,
-            (match, url) => {
-                if (url.includes(MY_DOMAIN)) return match;
-                return `href="${WRAPPER}${encodeURIComponent(url)}"`;
-            }
-        );
-
-        // [핵심 2] <id>...</id> 태그 내 주소 치환
-        // 구글은 id 태그 내부의 주소도 본인 도메인일 것을 요구하는 경우가 있습니다.
-        xmlData = xmlData.replace(
-            /<id>(https:\/\/talk\.coinpopbit\.com\/[^<]+)<\/id>/g,
-            (match, url) => {
-                if (url.includes(MY_DOMAIN)) return match;
-                return `<id>${WRAPPER}${encodeURIComponent(url)}</id>`;
-            }
-        );
-
-        res.set('Content-Type', 'application/xml; charset=utf-8');
-        res.send(xmlData);
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).send('Error fetching CoinPopTalk Feed');
-    }
-});
 
 // =========================================================
 // [RSS] Naver Blog RSS 중계 (구글 콘솔 오류 해결판)
