@@ -131,7 +131,7 @@ app.get('/naverblog', async (req, res) => {
                 <title>위너위너 투자 기록 - 네이버 블로그</title>
                 <meta name="description" content="위너위너의 네이버 블로그 최신 글 모음">
                 <meta name="robots" content="index, follow">
-                <link rel="canonical" href="https://blog.naver.com/${NAVER_ID}">
+               <!-- <link rel="canonical" href="https://blog.naver.com/${NAVER_ID}">-->
                 <style>
                     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: #f5f6f8; margin: 0; padding: 0; color: #333; }
                     .container { max-width: 720px; margin: 0 auto; background: #fff; min-height: 100vh; box-shadow: 0 0 10px rgba(0,0,0,0.05); }
